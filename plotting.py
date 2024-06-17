@@ -5,26 +5,38 @@ from hipe4ml import plot_utils
 import itertools
 import uproot
 
-#file_directory_data="/home/katrin/Cern_summerProject/AnalysisResults_treesML_data.root"
-#tree_data="O2lambdatableml"
-#file_directory_mc="/home/katrin/Cern_summerProject/AnalysisResults_treesML.root"
-#tree_mc="O2mclambdatableml"
+no_set=1
 
-#file_directory_data="/home/katrin/Cern_summerProject/AnalysisResults_treesML_data_LHC22o_apass6_small.root"
-#tree_data="O2lambdatableml"
-#file_directory_mc="/home/katrin/Cern_summerProject/AnalysisResults_treesML_mc_LHC24b1b_small.root"
-#tree_mc="O2mclambdatableml"
+if no_set==1:
+    file_directory_data="/home/katrin/Cern_summerProject/data/AnalysisResults_treesML_data.root"
+    tree_data="O2lambdatableml"
+    file_directory_mc="/home/katrin/Cern_summerProject/data/AnalysisResults_treesML.root"
+    tree_mc="O2mclambdatableml"
+    save_dir = '/home/katrin/Cern_summerProject/imgs/first_data/'
+    fname=None
 
-file_directory_data="/home/katrin/Cern_summerProject/data/AO2D_data.root"
-tree_data="O2lambdatableml"
-file_directory_mc="/home/katrin/Cern_summerProject/data/AO2D_MC.root"
-tree_mc="O2mclambdatableml"
+if no_set==3:
+    file_directory_data="/home/katrin/Cern_summerProject/data/AO2D_data.root"
+    tree_data="O2lambdatableml"
+    file_directory_mc="/home/katrin/Cern_summerProject/data/AO2D_MC.root"
+    tree_mc="O2mclambdatableml"
+    fname="DF*"
+    save_dir = '/home/katrin/Cern_summerProject/imgs/third_data/'
 
-save_dir = '/home/katrin/Cern_summerProject/imgs/third_data/'
+
+if no_set==2:
+    file_directory_data="/home/katrin/Cern_summerProject/data/AnalysisResults_treesML_data_LHC22o_apass6_small.root"
+    tree_data="O2lambdatableml"
+    file_directory_mc="/home/katrin/Cern_summerProject/data/AnalysisResults_treesML_mc_LHC24b1b_small.root"
+    tree_mc="O2mclambdatableml"
+    fname=None
+    save_dir = '/home/katrin/Cern_summerProject/imgs/second_data/'
+
+
 
 def plot_bck_cuts():
 
-    data=prep.get_rawdata(file_directory_data,tree_data, folder_name="DF*")
+    data=prep.get_rawdata(file_directory_data,tree_data, folder_name=fname)
     pdf_filename = save_dir+'prep_MLdata_bckg.pdf'
     pdf = PdfPages(pdf_filename)
     
@@ -32,7 +44,7 @@ def plot_bck_cuts():
     
     cu2=prep.fitplot_gauss_rec(data, var="fMass",p0=[300000,1.115,0.005,1000],fs=(8,3),sig_cut=11)[2]
     #cu2=prep.fit_gauss_rec(data, var="fMass",p0=[300000,1.115,0.005,1000],sig_cut=9)[2]
-    bckg=prep.get_bckg(file_directory_data, tree_data, cuts=cu2,folder_name="DF*")
+    bckg=prep.get_bckg(file_directory_data, tree_data, cuts=cu2,folder_name=fname)
 
     prep.plot_hist(bckg,"fMass",leg_labels="bckg",fs=(8,3),alpha=0.5)
 
@@ -45,12 +57,12 @@ def plot_bck_cuts():
     pdf.close()
 
 def plot_prompt_cuts():
-    data=prep.get_rawMC_data(file_directory_mc, tree_mc ,folder_name="DF*")
-    pdf_filename = '/home/katrin/Cern_summerProject/imgs/third_data/prep_MLdata_prompt.pdf'
+    data=prep.get_rawMC_data(file_directory_mc, tree_mc ,folder_name=fname)
+    pdf_filename =save_dir+'prep_MLdata_prompt.pdf'
     pdf = PdfPages(pdf_filename)
 
-    prompt= prep.get_prompt(file_directory_mc, tree_mc,folder_name="DF*")
-    nonprompt=prep.get_nonprompt(file_directory_mc, tree_mc,folder_name="DF*")
+    prompt= prep.get_prompt(file_directory_mc, tree_mc,folder_name=fname)
+    nonprompt=prep.get_nonprompt(file_directory_mc, tree_mc,folder_name=fname)
 
     prep.plot_hist(data,"fMass",leg_labels="raw MC", fs=(8,3),alpha=0.5)
     prep.plot_hist(prompt,"fMass",leg_labels="prompt",fs=(8,3),alpha=0.5)
@@ -67,13 +79,13 @@ def plot_prompt_cuts():
 
 def plot_allvar_dist():
         
-    data=prep.get_rawdata(file_directory_data, tree_data,folder_name="DF*")
+    data=prep.get_rawdata(file_directory_data, tree_data,folder_name=fname)
     cu=prep.fit_gauss_rec(data, var="fMass",p0=[300000,1.115,0.005,1000])[2]
 
-    nonprompt=prep.get_nonprompt(file_directory_mc, tree_mc,folder_name="DF*")
-    prompt=prep.get_prompt(file_directory_mc, tree_mc,folder_name="DF*")
-    bckg=prep.get_bckg(file_directory_data, tree_data, cu,folder_name="DF*")
-    bckg_MC=prep.get_MC_bckg(file_directory_mc, tree_mc,folder_name="DF*")
+    nonprompt=prep.get_nonprompt(file_directory_mc, tree_mc,folder_name=fname)
+    prompt=prep.get_prompt(file_directory_mc, tree_mc,folder_name=fname)
+    bckg=prep.get_bckg(file_directory_data, tree_data, cu,folder_name=fname)
+    bckg_MC=prep.get_MC_bckg(file_directory_mc, tree_mc,folder_name=fname)
 
     prompt_add=prep.proton_pion_division(prompt)
     nonprompt_add=prep.proton_pion_division(nonprompt)
@@ -99,13 +111,13 @@ def plot_allvar_dist():
 
 def plot_corr():
 
-    data=prep.get_rawdata(file_directory_data, tree_data,folder_name="DF*")
+    data=prep.get_rawdata(file_directory_data, tree_data,folder_name=fname)
     cu=prep.fit_gauss_rec(data, var="fMass",p0=[300000,1.115,0.005,1000])[2]
 
-    nonprompt=prep.get_nonprompt(file_directory_mc, tree_mc,folder_name="DF*")
-    prompt=prep.get_prompt(file_directory_mc, tree_mc,folder_name="DF*")
-    bckg=prep.get_bckg(file_directory_data, tree_data, cu,folder_name="DF*")
-    bckg_MC=prep.get_MC_bckg(file_directory_mc, tree_mc,folder_name="DF*")
+    nonprompt=prep.get_nonprompt(file_directory_mc, tree_mc,folder_name=fname)
+    prompt=prep.get_prompt(file_directory_mc, tree_mc,folder_name=fname)
+    bckg=prep.get_bckg(file_directory_data, tree_data, cu,folder_name=fname)
+    bckg_MC=prep.get_MC_bckg(file_directory_mc, tree_mc,folder_name=fname)
 
     prompt_add=prep.proton_pion_division(prompt)
     nonprompt_add=prep.proton_pion_division(nonprompt)
@@ -127,13 +139,13 @@ def plot_corr():
     pdf.close()
 
 def plot_2dhist():
-    data=prep.get_rawdata(file_directory_data, tree_data,folder_name="DF*")
+    data=prep.get_rawdata(file_directory_data, tree_data,folder_name=fname)
     cu=prep.fit_gauss_rec(data, var="fMass",p0=[300000,1.115,0.005,1000])[2]
 
-    nonprompt=prep.get_nonprompt(file_directory_mc, tree_mc,folder_name="DF*")
-    prompt=prep.get_prompt(file_directory_mc, tree_mc,folder_name="DF*")
-    bckg=prep.get_bckg(file_directory_data, tree_data, cu,folder_name="DF*")
-    bckg_MC=prep.get_MC_bckg(file_directory_mc, tree_mc,folder_name="DF*")
+    nonprompt=prep.get_nonprompt(file_directory_mc, tree_mc,folder_name=fname)
+    prompt=prep.get_prompt(file_directory_mc, tree_mc,folder_name=fname)
+    bckg=prep.get_bckg(file_directory_data, tree_data, cu,folder_name=fname)
+    bckg_MC=prep.get_MC_bckg(file_directory_mc, tree_mc,folder_name=fname)
 
     prompt_add=prep.proton_pion_division(prompt)
     nonprompt_add=prep.proton_pion_division(nonprompt)
@@ -165,5 +177,8 @@ def plot_2dhist():
     pdf.close()
 
 
+plot_bck_cuts()
+plot_prompt_cuts()
+plot_allvar_dist()
 plot_2dhist()
-#plot_corr()
+plot_corr()

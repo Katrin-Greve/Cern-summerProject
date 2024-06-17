@@ -9,9 +9,7 @@ from hipe4ml.analysis_utils import train_test_generator
 from hipe4ml import plot_utils
 from typing import Union, Sequence,List
 from scipy import optimize
-#import ROOT
-from matplotlib.image import NonUniformImage
-from matplotlib.axes import Axes
+
 
 
 #####################################################
