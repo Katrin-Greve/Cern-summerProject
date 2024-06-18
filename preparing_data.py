@@ -1,20 +1,20 @@
 import numpy as np
 import pandas as pd
-import xgboost as xgb
 import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split
-from hipe4ml.model_handler import ModelHandler
 from hipe4ml.tree_handler import TreeHandler
-from hipe4ml.analysis_utils import train_test_generator
 from hipe4ml import plot_utils
 from typing import Union, Sequence,List
 from scipy import optimize
+import ROOT
+import uproot
+import awkward as ak
+import PyPDF2
+import os
 
 
-
-#####################################################
-### Getting useful subsets of TreeHandler objects ###
-#####################################################
+###################################################
+### Convert TreeHandler, Arrays and .root Files ###
+###################################################
 
 # Function to convert a TreeHandler object to a numpy array for a given variable
 def TreetoArray(data:TreeHandler, var:str)->np.array:
@@ -33,46 +33,81 @@ def TreetoArray(data:TreeHandler, var:str)->np.array:
     dataArr = np.array(pd.DataFrame(numpy_array, columns=df.columns)[var]).astype(np.float64)
     return dataArr
 
-# Function to get raw data from a TreeHandler object
+# Function to save a TreeHandler as a .root file
+def get_root_from_TreeHandler(treehdl:TreeHandler,output_name:str,save_dir:str,treename:str):
+    """
+    Convert a TreeHandler object to a .root for a given variable.
+
+    Parameters:
+        data (TreeHandler): The TreeHandler object containing the data.
+        save_dir (str): Name of the direction, in which the .root file should be safed.
+        output_name (str): name of the output file. Should end with .root
+    """
+    # Convert the TreeHandler DataFrame to a ROOT file
+    df=treehdl.get_data_frame()
+    ak_array = ak.Array(df.to_dict(orient='list'))
+    with uproot.recreate(save_dir+output_name) as file:
+        file[treename] = ak_array
+
+
+def get_sampleSize(data:TreeHandler)->int:
+    """
+     Parameters:
+        data(TreeHandler): data for that the sample size is desired
+
+    Returns:
+        int: sample size
+    """
+    return len(TreetoArray(data,var="fCt"))
+
+##################################################################
+### Getting useful data subsets in form of TreeHandler objects ###
+##################################################################
+
+# Function to get a TreeHandler containing the data from a .root file
 def get_rawdata(file_directory_data:str, tree_data:str, folder_name:Union[str,None]=None)->TreeHandler:
     """
     Get raw data from a TreeHandler object.
 
     Parameters:
-        file_directory_data (str): The file directory of the data.
-        tree_data (str): The name of the data tree.
+        file_directory_data (str): The file directory of the .root file
+        tree_data (str): The name of the tree with the desired data
+        folder_name (str): The folder in which the tree is contained. Default to None (no folders)
 
     Returns:
-        TreeHandler: The TreeHandler object containing the raw data without not known particles.
+        TreeHandler: The TreeHandler object containing the data
     """
     data=TreeHandler(file_directory_data, tree_data, folder_name=folder_name)
     return data
 
-# Function to get raw MC data from a TreeHandler object
+# Function to get a TreeHandler containing the Monte Carlo data from a .root file
 def get_rawMC_data(file_directory_mc:str, tree_mc:str,folder_name:Union[str,None]=None)->TreeHandler:
     """
-    Get raw Monte Carlo (MC) data from a TreeHandler object.
+    Get Monte Carlo data from a TreeHandler object.
 
     Parameters:
-        file_directory_mc (str): The file directory of the MC data.
-        tree_mc (str): The name of the MC tree.
+        file_directory_mc (str): The file directory of the .root file
+        tree_mc (str): The name of the tree with the desired Monte Carlo data
+        folder_name (str): The folder in which the tree is contained. Default to None (no folders)
 
     Returns:
-        TreeHandler: The TreeHandler object containing the raw MC data without not known particles.
+        TreeHandler: The TreeHandler object containing the Monte Carlo
     """
     data_mc=TreeHandler(file_directory_mc, tree_mc,folder_name=folder_name)
     raw_mc=data_mc.get_subset("fMass!=-999 and fIsReco")
     return raw_mc
 
-# Function to get background data from a TreeHandler object based on cuts
+# Function to get a TreeHandler containing the backgrund from a .root data file 
 def get_bckg(file_directory_data:str, tree_data:str, cuts, folder_name:Union[str,None]=None)->TreeHandler:
     """
-    Get background data from a TreeHandler object based on cuts.
+    Get a TreeHandler containing the backgrund from a .root file. Background is chosen from real data by 
+    setting cuts for the invariant Mass.
 
     Parameters:
         file_directory_data (str): The file directory of the data.
         tree_data (str): The name of the data tree.
         cuts (list): A list containing the lower and upper bounds for the cuts.
+        folder_name (str): The folder in which the tree is contained. Default to None (no folders)
 
     Returns:
         TreeHandler: The TreeHandler object containing the background data.
@@ -81,15 +116,16 @@ def get_bckg(file_directory_data:str, tree_data:str, cuts, folder_name:Union[str
     bckg=data.get_subset(f'fMass<{cuts[0]} or fMass>{cuts[1]} and fMass!=-999')
     return bckg
 
-# Function to get background from MC TreeHandler object based on selecting PDGCode -999
-def get_MC_bckg(file_directory_mc:str, tree_mc:str,folder_name:Union[str,None]=None)->TreeHandler:
+# Function to get a TreeHandler containing the backgrund from a .root file with Monte Carlo generated data 
+def get_MC_bckg(file_directory_mc:str, tree_mc:str, folder_name:Union[str,None]=None)->TreeHandler:
     """
-    Get background data from a TreeHandler object based on cuts.
+    Get a TreeHandler containing the background from a .root file with Monte Carlo generated data.
+    Background is chosen by using only events with PDGCode==-999
 
     Parameters:
-        file_directory_data (str): The file directory of the data.
-        tree_data (str): The name of the data tree.
-        cuts (list): A list containing the lower and upper bounds for the cuts.
+        file_directory_mc (str): The file directory of the data.
+        tree_mc (str): The name of the data tree.
+        folder_name (str): The folder in which the tree is contained. Default to None (no folders)
 
     Returns:
         TreeHandler: The TreeHandler object containing the background data.
@@ -98,15 +134,16 @@ def get_MC_bckg(file_directory_mc:str, tree_mc:str,folder_name:Union[str,None]=N
     bckg=data.get_subset('fPDGCode==-999 and fMass!=-999')
     return bckg
 
-# Function to get prompt MC from a TreeHandler object based on cuts
-def get_prompt(file_directory_mc:str, tree_mc:str,folder_name:Union[str,None]=None)->TreeHandler:
+# Function to get a TreeHandler containing the prompt from a .root file with Monte Carlo generated data 
+def get_prompt(file_directory_mc:str, tree_mc:str, folder_name:Union[str,None]=None)->TreeHandler:
     """
-    Get prompt data from a TreeHandler object based on cuts.
+    Get a TreeHandler containing the prompt from a .root file with Monte Carlo generated data.
+    Prompt is chosen by using only events with PDGCode==3122 or -3122 and PDGCodeMother==0
 
     Parameters:
-        file_directory_mc (str): The file directory of the MC data.
-        tree_mc (str): The name of the MC tree.
-        cuts (list): A list containing the lower and upper bounds for the cuts.
+        file_directory_mc (str): The file directory of the data.
+        tree_mc (str): The name of the data tree.
+        folder_name (str): The folder in which the tree is contained. Default to None (no folders)
 
     Returns:
         TreeHandler: The TreeHandler object containing the prompt data.
@@ -116,33 +153,52 @@ def get_prompt(file_directory_mc:str, tree_mc:str,folder_name:Union[str,None]=No
     prompt = data_mc.get_subset('fPDGCodeMother==0 and (fPDGCode == 3122 or fPDGCode== -3122) and fMass!=-999 and fIsReco')
     return prompt
 
-# Function to get non-prompt MC from a TreeHandler object based on cuts
-def get_nonprompt(file_directory_mc:str, tree_mc:str,folder_name:Union[str,None]=None)->TreeHandler:
+# Function to get a TreeHandler containing the non-prompt from a .root file with Monte Carlo generated data 
+def get_nonprompt(file_directory_mc:str, tree_mc:str, folder_name:Union[str,None]=None)->TreeHandler:
     """
-    Get non-prompt data from a TreeHandler object based on cuts.
+    Get a TreeHandler containing the non-prompt from a .root file with Monte Carlo generated data.
+    Prompt is chosen by using only events with PDGCode==3122 or -3122 and PDGCodeMother!=0
 
     Parameters:
-        file_directory_mc (str): The file directory of the MC data.
-        tree_mc (str): The name of the MC tree.
-        cuts (list): A list containing the lower and upper bounds for the cuts.
+        file_directory_mc (str): The file directory of the data.
+        tree_mc (str): The name of the data tree.
+        folder_name (str): The folder in which the tree is contained. Default to None (no folders)
 
     Returns:
-        TreeHandler: The TreeHandler object containing the non-prompt data.
+        TreeHandler: The TreeHandler object containing the prompt data.
     """
     data_mc=TreeHandler(file_directory_mc, tree_mc,folder_name=folder_name)
     #nonprompt = data_mc.get_subset(f'not fPDGCodeMother==0 and (fMass>{cuts[0]} and fMass<{cuts[1]}) and fCosPA!=-999')
     nonprompt = data_mc.get_subset('fPDGCodeMother!=0 and (fPDGCode == 3122 or fPDGCode== -3122) and fMass!=-999 and fIsReco')
     return nonprompt
 
-def get_sampleSize(data):
-    return len(TreetoArray(data,var="fCt"))
+# Function to get a TreeHandler containing the subsets with positive/negative fPt 
+def filter_posneg_Pt(data:TreeHandler)->Sequence[TreeHandler]:
+    '''
+    Filters the TreeHandler in two subsets: divided in positive/negative fPt
 
-def filter_posneg_Pt(data:TreeHandler):
+    Parameters:
+        data (TreeHandler): TreeHandler containing the data to be divided
+    
+    Returns:
+        data_pos(TreeHandler): The TreeHandler containg events with positive fPt
+        data_neg(TreeHandler): The TreeHandler containg events with negative fPt
+    '''
     data_pos=data.get_subset("fPt>0")
     data_neg=data.get_subset("fPt<0")
     return data_pos, data_neg
 
+# Function to get a TreeHandler for which the fDcaPV and the fPpcNsigma is sorted for protons and pions
 def proton_pion_division(data:TreeHandler)->TreeHandler:
+    '''
+    Add new columns in TreeHanler: "fDcaPVProton","fDcaPVPion","fTpcNsigmaProton","fTpcNsigmaPion"
+
+    Parameters:
+        data (TreeHandler): TreeHandler containing the data to be sorted 
+    
+    Returns:
+        TreeHandler with sorted data
+    '''
     data_pos=data.get_subset("fPt>0")
     data_neg=data.get_subset("fPt<0")
     df=data.get_data_frame()
@@ -156,6 +212,30 @@ def proton_pion_division(data:TreeHandler)->TreeHandler:
     return tr
 
 
+# Function to save the desired subsets
+def save_sets(dir_tree:str, file_directory_data:str, file_directory_mc:str,tree_data:str, tree_mc:str, no_set:int, tree:str="tree", fname:Union[str,None]=None):
+    '''
+    Parameters:
+        dir_tree: direction, in which the output .root files will be saved
+        tree (str): Name of the tree in which the output will be saved. Default to "tree"
+        file_directory_data (str): The file directory of the data.
+        tree_data (str): The name of the data tree.        
+        file_directory_mc (str): The file directory of the MC data.
+        tree_mc (str): The name of the MC tree.
+        fname (str): The folder in which the tree is contained. Default to None (no folders)
+    
+    '''
+    prompt=proton_pion_division(get_prompt(file_directory_mc, tree_mc, folder_name=fname))
+    nonprompt=proton_pion_division(get_nonprompt(file_directory_mc, tree_mc, folder_name=fname))
+    cu=fit_gauss_rec(get_rawdata(file_directory_data, tree_data, folder_name=fname), var="fMass",p0=[300000,1.115,0.005,1000])[2]
+    bckg=proton_pion_division(get_bckg(file_directory_data, tree_data, cu, folder_name=fname))
+    bckg_MC=proton_pion_division(get_MC_bckg(file_directory_mc, tree_mc, folder_name=fname))
+
+    sets=[prompt,nonprompt,bckg,bckg_MC]
+    set_names=["prompt","nonprompt","bckg_data","bckg_MC"]
+ 
+    for (i,name) in zip(sets,set_names):
+        get_root_from_TreeHandler(treehdl=i, save_dir=dir_tree, output_name=f"{name}_{no_set}.root",treename=tree)
 
 
 #################################
@@ -179,7 +259,7 @@ def gauss_offset(x: np.ndarray, a: float, mu: float, sigma: float, offset=float)
 # Gauss distribution
 def gauss(x: np.ndarray, a: float, mu: float, sigma: float) -> np.ndarray:
     """
-    Gauss distribution with offset
+    Gauss distribution
 
     Parameters:
         x (numpy.ndarray): x values
@@ -189,8 +269,27 @@ def gauss(x: np.ndarray, a: float, mu: float, sigma: float) -> np.ndarray:
     """
     return a * np.exp(-((x - mu) ** 2) / (2 * sigma ** 2))
 
-# Function to fit a TreeHandler object with a Gaussian
-def fit_gauss_offset(data:TreeHandler, var:str, no_bins:int=100, fitting_range:list=[45,55] ,p0:Union[Sequence[float],None]=None, sig_cut:float=9.):
+# Function to fit data from a TreeHandler object with a Gaussian with offset
+def fit_gauss_offset(data:TreeHandler, var:str, no_bins:int=100, fitting_range:Sequence[int]=[45,55] ,p0:Union[Sequence[float],None]=None, sig_cut:float=9.):
+    """
+    Fit a Gauss to a TreeHandler column
+
+    Parameters:
+        data (TreeHandler): TreeHandler that contains the data to be fitter
+        var (str): column to be fitted
+        no_bins (int): Number of bins, that are used for the fitting. Default to 100
+        fitting_range (List[int]): range that is used for the fit. Default to [45,55]
+        p0 (Sequence[float],None): start parameters used for fit. Default to None
+        sig_cut (float): The sigma interval where the cuts for the chosen data are visualised. Default to 9
+
+    Returns:
+        par (List[float]): The optimal parameters
+        unc (List[float]): The uncertainty array of the optimal parameters
+        cuts (List[float]): The data cuts, based on the given sig_cut intervall
+        fitting_range(List[int]): The fitting range that was used
+        bin (int): no. of bins
+        sig_cut (float): The sigma interval where the cuts for the chosen data are visualised.
+    """
     dataArr=TreetoArray(data,var)
     hist, bin = np.histogram(dataArr, bins=no_bins)
     if p0:
@@ -200,7 +299,30 @@ def fit_gauss_offset(data:TreeHandler, var:str, no_bins:int=100, fitting_range:l
     cuts=[par[1]-sig_cut*abs(par[2]),par[1]+sig_cut*abs(par[2])]
     return par, unc,cuts, fitting_range, bin, sig_cut
 
+
+# Function to fit data from a TreeHandler object with a Gaussian
 def fit_gauss(data:TreeHandler, var:str, no_bins:int=100, fitting_range:list=[45,55] ,p0:Union[Sequence[float],None]=None, sig_cut:float=9.):
+    """
+    Fit a Gauss to a TreeHandler column
+
+    Parameters:
+        data (TreeHandler): TreeHandler that contains the data to be fitter
+        var (str): column to be fitted
+        no_bins (int): Number of bins, that are used for the fitting. Default to 100
+        fitting_range (List[int]): range that is used for the fit. Default to [45,55]
+        p0 (Sequence[float],None): start parameters used for fit. Default to None
+        sig_cut (float): The sigma interval where the cuts for the chosen data are visualised. Default to 9
+
+    Returns:
+        tuple(
+        par (List[float]): The optimal parameters
+        unc (List[float]): The uncertainty array of the optimal parameters
+        cuts (List[float]): The data cuts, based on the given sig_cut intervall
+        fitting_range(List[int]): The fitting range that was used
+        bin (int): no. of bins
+        sig_cut (float): The sigma interval where the cuts for the chosen data are visualised.
+        )
+    """
     dataArr=TreetoArray(data,var)
     hist, bin = np.histogram(dataArr, bins=no_bins)
     if p0:
@@ -211,13 +333,13 @@ def fit_gauss(data:TreeHandler, var:str, no_bins:int=100, fitting_range:list=[45
     return par, unc,cuts, fitting_range, bin, sig_cut
 
 # Function to fit a TreeHandler object with a Gaussian by using recursivly smaller fit ranges
-def fit_gauss_rec(data,var:str,no_bins=100,p0:Union[Sequence[float],None]=None, rec_len:int=2, sig:float=3.,sig_cut:float=9.):
+def fit_gauss_rec(data:TreeHandler, var:str, no_bins:int=100, p0:Union[Sequence[float],None]=None, rec_len:int=2, sig:float=3.,sig_cut:float=9.):
     """
     Fit a Gaussian distribution to data with recursive fitting.
 
     Parameters:
         data (TreeHandler): The TreeHandler object containing the data.
-        var (str): The variable name.
+        var (str): The column to be fitted
         no_bins (int, optional): The number of bins for the histogram. Defaults to 100.
         p0 (Union[Sequence[float], None], optional): Initial parameters for the Gaussian fit. Defaults to None.
         rec_len (int, optional): The number of recursive fits. Defaults to 2.
@@ -338,18 +460,157 @@ def fitplot_gauss_rec(data,var:str,no_bins=100,p0:Union[Sequence[float],None]=No
 
 
 # Function to get all possible variables for a comparison plot
-def var_draw_all(tree1:TreeHandler, tree2:TreeHandler)->list:
+def var_draw_all(tree1:TreeHandler, tree2:TreeHandler)->Sequence[str]:
+    """
+    Get all possible variables for a comparison plot
+
+    Parameters:
+        tree1 (TreeHandler): First TreeHandler for the comparison
+        tree2 (TreeHandler): Second TreeHandler for the comparison
+
+    Returns:
+        Sequence[str]: List containing all shared columns
+    """
     THs=[tree1,tree2]
     return [dat for dat in THs[0].get_var_names() if all(dat in entry.get_var_names() for entry in THs)]
 
-def plot_2dhist(data:TreeHandler, var1:str, var2:str,ax, bins:int=100, cmap:str="rainbow"):
+# Function to plot and save a 2d histogram using PYthon
+def plot_2dhist_numpy(data:TreeHandler, var1:str, var2:str,ax, bin:int=100, cmap:str="rainbow"):
+    """
+    Plot a 2 dimensional histogram using numpy.
+
+    Parameters:
+        data (TreeHandler): TreeHandler that contains the desired data for the 2d histogram
+        var1 (str): x-data for the histogram, column name of data TreeHandler
+        var2 (str): y-data for the histogram, column name of data TreeHandler
+        ax: numpy axis object in which the histogram will be plotted
+        bins (int): no. of bins in the histogram
+        cmap (str): Cmap, used in the plot. Default to "rainbow"
+    """
     df = data.get_data_frame()
     numpy_array=df.to_numpy()
     dataArr1 = np.array(pd.DataFrame(numpy_array, columns=df.columns)[var1]).astype(np.float64)
     dataArr2 = np.array(pd.DataFrame(numpy_array, columns=df.columns)[var2]).astype(np.float64)
-    hist, binsx,binsy=np.histogram2d(dataArr1,dataArr2, bins=100)
+    hist, binsx,binsy=np.histogram2d(dataArr1,dataArr2, bins=bin)
     hist=hist.T
 
     ax.pcolormesh(binsx, binsy, hist, cmap=cmap)
     ax.set_xlim(binsx.min(), binsx.max())
     ax.set_ylim(binsy.min(), binsy.max())
+
+
+# Function to draw and save a 2d histogram using ROOT
+def plot_2dhist_root(file:str, tree_name:str,  var1:str, var2:str, save_name_file:str, hist_name:str, save_name_pdf:str, title:str ,bins:int=7,cmap=ROOT.kRainbow):
+    """
+    Plot a 2 dimensional histogram using ROOT. Saves the histogram as pdf and as a .root file.
+
+    Parameters:
+        file (str): .root File that contains the desired data for the 2d histogram
+        tree_name (str): name of tree, in which teh data is stored
+        var1 (str): x-data for the histogram, column name of data TreeHandler
+        var2 (str): y-data for the histogram, column name of data TreeHandler
+        save_name_file (str): Name of the .root file that will contain the histogram. If already existing, it will be opened.
+        hist_name (str): Name of the histogram that will be stored in the .root file
+        save_name_pdf (str): Name of the pdf file, that will be saved.
+        title (str): title of the histogram
+        bins (int): no. of bins in the histogram. Default to 7
+        cmap: Cmap, used in the plot. Default to ROOT.kRainbow
+    """
+    file = ROOT.TFile(file, "READ")
+    tree = file.Get(tree_name)
+    hist = ROOT.TH2F(hist_name, title, bins, 0,0, bins, 0,0)
+
+    tree.Draw(f"{var2}:{var1} >> {hist_name}")
+
+    print(f"ok, tree draws {var1}, {var2}")
+    canvas = ROOT.TCanvas("canvas", "", 1000, 600)
+    canvas.SetRightMargin(0.33)
+    hist.Draw("COLZ")
+    legend = hist.GetListOfFunctions().FindObject("TPaveStats") 
+    if legend:
+        legend.SetX1NDC(0.80)  # Adjust X1 position in normalized coordinates
+        legend.SetX2NDC(0.98)  # Adjust X2 position in normalized coordinates
+        legend.SetY1NDC(0.80)  # Adjust Y1 position in normalized coordinates
+        legend.SetY2NDC(0.95)  # Adjust Y2 position in normalized coordinates
+
+    
+    hist.SetFillStyle(3000)
+    hist.SetFillColor(ROOT.kAzure+6)
+
+    ROOT.gStyle.SetPalette(cmap)
+    hist.Draw("COLZ")  # "COLZ" draws a 2D plot with a color palette
+    hist.SetXTitle(var1)
+    hist.SetYTitle(var2)
+    ROOT.gPad.SetLogz(1)
+
+    # Save the canvas as an image file if needed
+    canvas.SaveAs(save_name_pdf)
+    canvas.Close()
+    # Create a new ROOT file to save the histogram
+    if os.path.exists(save_name_file):
+        output_file = ROOT.TFile(save_name_file, "UPDATE")
+    else:
+        output_file = ROOT.TFile(save_name_file, "RECREATE")
+    hist.Write()
+    output_file.Close()
+
+# Function to plot several histograms in one pdf
+def plot_histograms_grid(root_file:str,save_name_pdf:str):
+    """
+    Parameters:
+        root_file (str): Direction of root file that contains all histograms
+        save_name_pdf (str): Name of the PDF that will be saved
+    """
+
+    file = ROOT.TFile(root_file, "READ")
+    hist1=file.Get(file.GetListOfKeys()[0].GetName())
+    hist2=file.Get(file.GetListOfKeys()[1].GetName())
+    hist3=file.Get(file.GetListOfKeys()[2].GetName())
+    hist4=file.Get(file.GetListOfKeys()[3].GetName())
+
+    canvas = ROOT.TCanvas("canvas", "", 1000, 600)
+    canvas.Divide(2, 2)
+    
+    canvas.cd(4)
+    hist1.Draw()
+    ROOT.gPad.SetLogz(1)
+
+
+    canvas.cd(2)
+    hist2.Draw()
+    ROOT.gPad.SetLogz(1)
+
+
+    canvas.cd(3)
+    hist3.Draw()
+    ROOT.gPad.SetLogz(1)
+
+
+    canvas.cd(1)
+    ROOT.gPad.SetLogz(1)
+    hist4.Draw()
+
+    canvas.Update()
+    canvas.SaveAs(save_name_pdf)
+
+# Function to merge several PDFs in one PDF file
+def merge_pdfs(pdf_list:Sequence[str], output_path:str):
+    """
+    Parameters:
+        pdf_list (Sequence[str]): List that contains all PDFs that should be merged
+        output_path (str): Name of the merged PDF that will be saved
+    """
+    merger = PyPDF2.PdfMerger()
+
+    for pdf in pdf_list:
+        merger.append(pdf)
+
+    merger.write(output_path)
+    merger.close()
+
+    # Remove individual PDF files
+    for pdf in pdf_list:
+        os.remove(pdf)
+
+
+    

@@ -12,9 +12,9 @@ from scipy import optimize
 import preparing_data as prep
 from matplotlib.backends.backend_pdf import PdfPages
 
-
+directory_sets="/home/katrin/Cern_summerProject/root_trees/"
 save_dir="/home/katrin/Cern_summerProject/imgs/ml_plots/"
-no_set=2
+no_set=3
 
 if no_set==3:
     file_directory_data="/home/katrin/Cern_summerProject/data/AO2D_data.root"
@@ -38,13 +38,35 @@ if no_set==1:
     tree_mc="O2mclambdatableml"
     fname=None
 
+def save_sets():
 
-def get_traindata():
+    dir_tree="/home/katrin/Cern_summerProject/root_trees/"
+    tree="tree"
+
     prompt=prep.proton_pion_division(prep.get_prompt(file_directory_mc, tree_mc, folder_name=fname))
     nonprompt=prep.proton_pion_division(prep.get_nonprompt(file_directory_mc, tree_mc, folder_name=fname))
     cu=prep.fit_gauss_rec(prep.get_rawdata(file_directory_data, tree_data, folder_name=fname), var="fMass",p0=[300000,1.115,0.005,1000])[2]
     bckg=prep.proton_pion_division(prep.get_bckg(file_directory_data, tree_data, cu, folder_name=fname))
     bckg_MC=prep.proton_pion_division(prep.get_MC_bckg(file_directory_mc, tree_mc, folder_name=fname))
+
+    sets=[prompt,nonprompt,bckg,bckg_MC]
+    set_names=["prompt","nonprompt","bckg_data","bckg_MC"]
+ 
+    for (i,name) in zip(sets,set_names):
+        prep.get_root_from_TreeHandler(treehdl=i,save_dir=dir_tree,output_name=f"{name}_{no_set}.root",treename=tree)
+
+def get_traindata(already_saved:bool=True):
+    if already_saved==False:
+        save_sets()
+        prompt=TreeHandler(directory_sets+f"prompt_{no_set}.root", "tree")
+        nonprompt=TreeHandler(directory_sets+f"nonprompt_{no_set}.root", "tree")
+        bckg=TreeHandler(directory_sets+f"bckg_data_{no_set}.root", "tree")
+        bckg_MC=TreeHandler(directory_sets+f"bckg_MC_{no_set}.root", "tree")
+    else:
+        prompt=TreeHandler(directory_sets+f"prompt_{no_set}.root", "tree")
+        nonprompt=TreeHandler(directory_sets+f"nonprompt_{no_set}.root", "tree")
+        bckg=TreeHandler(directory_sets+f"bckg_data_{no_set}.root", "tree")
+        bckg_MC=TreeHandler(directory_sets+f"bckg_MC_{no_set}.root", "tree")
 
     train_test_data = train_test_generator([bckg,nonprompt,prompt], [0, 1, 2], test_size=0.5, random_state=42)
     train_test_dataMC = train_test_generator([bckg_MC,nonprompt,prompt], [0, 1, 2], test_size=0.5, random_state=42)
