@@ -60,6 +60,16 @@ def get_sampleSize(data:TreeHandler)->int:
     """
     return len(TreetoArray(data,var="fCt"))
 
+def get_variable_names(obj_list, namespace):
+    result = {}
+    for obj in obj_list:
+        names = [name for name, value in namespace.items() if value is obj]
+        if len(names)==1:
+            names=names[0]
+        if names:
+            result[obj] = names
+    return list(result.values())
+
 ##################################################################
 ### Getting useful data subsets in form of TreeHandler objects ###
 ##################################################################
@@ -188,6 +198,26 @@ def filter_posneg_Pt(data:TreeHandler)->Sequence[TreeHandler]:
     data_neg=data.get_subset("fPt<0")
     return data_pos, data_neg
 
+def cut_data(data:TreeHandler, var:str, lower_cut:Union[float,None]=None,upper_cut:Union[float,None]=None, inclusive:bool=True)->TreeHandler:
+
+    if inclusive:
+        if upper_cut and lower_cut:
+            cutted=data.get_subset(f'{var}>{lower_cut} and {var}<{upper_cut}')
+        if upper_cut and not lower_cut:
+            cutted=data.get_subset(f'{var}<{upper_cut}')
+        if lower_cut and not upper_cut:
+            cutted=data.get_subset(f'{var}>{lower_cut}')
+        if not upper_cut and not lower_cut:
+            cutted=data
+    else:
+        if upper_cut and lower_cut:
+            cutted=data.get_subset(f'{var}<{lower_cut} or {var}>{upper_cut}')
+    return cutted
+
+#############################################
+### Adding useful columns to TreeHandlers ###
+#############################################
+
 # Function to get a TreeHandler for which the fDcaPV and the fPpcNsigma is sorted for protons and pions
 def proton_pion_division(data:TreeHandler)->TreeHandler:
     '''
@@ -211,31 +241,55 @@ def proton_pion_division(data:TreeHandler)->TreeHandler:
     tr.set_data_frame(df)
     return tr
 
+def decayL(data:TreeHandler)->TreeHandler:
 
-# Function to save the desired subsets
-def save_sets(dir_tree:str, file_directory_data:str, file_directory_mc:str,tree_data:str, tree_mc:str, no_set:int, tree:str="tree", fname:Union[str,None]=None):
+    df=data.get_data_frame()
+    M=TreetoArray(data, "fMass")
+    Pt=TreetoArray(data, "fPt")
+    Ct=TreetoArray(data, "fCt")
+    L=(Ct*M)/Pt
+    df["fL"]=np.abs(L)
+    tr=TreeHandler()
+    tr.set_data_frame(df)
+    return tr
+
+def get_base_sets(file_directory_data:str, tree_data:str, file_directory_mc:str, tree_mc:str, fname:Union[str,None]=None)->Sequence[TreeHandler]:
     '''
     Parameters:
-        dir_tree: direction, in which the output .root files will be saved
-        tree (str): Name of the tree in which the output will be saved. Default to "tree"
         file_directory_data (str): The file directory of the data.
         tree_data (str): The name of the data tree.        
         file_directory_mc (str): The file directory of the MC data.
         tree_mc (str): The name of the MC tree.
         fname (str): The folder in which the tree is contained. Default to None (no folders)
     
+    Returns:
+        Sequence[TreeHandler]: prompt, nonprompt, bckg, bckg_MC
+    
     '''
-    prompt=proton_pion_division(get_prompt(file_directory_mc, tree_mc, folder_name=fname))
-    nonprompt=proton_pion_division(get_nonprompt(file_directory_mc, tree_mc, folder_name=fname))
+    prompt=decayL(proton_pion_division(get_prompt(file_directory_mc, tree_mc, folder_name=fname)))
+    nonprompt=decayL(proton_pion_division(get_nonprompt(file_directory_mc, tree_mc, folder_name=fname)))
     cu=fit_gauss_rec(get_rawdata(file_directory_data, tree_data, folder_name=fname), var="fMass",p0=[300000,1.115,0.005,1000])[2]
-    bckg=proton_pion_division(get_bckg(file_directory_data, tree_data, cu, folder_name=fname))
-    bckg_MC=proton_pion_division(get_MC_bckg(file_directory_mc, tree_mc, folder_name=fname))
+    bckg_data=decayL(proton_pion_division(get_bckg(file_directory_data, tree_data, cu, folder_name=fname)))
+    bckg_MC=decayL(proton_pion_division(get_MC_bckg(file_directory_mc, tree_mc, folder_name=fname)))
 
-    sets=[prompt,nonprompt,bckg,bckg_MC]
-    set_names=["prompt","nonprompt","bckg_data","bckg_MC"]
- 
+    return prompt, nonprompt, bckg_data, bckg_MC
+
+# Function to save the desired subsets
+def save_sets(sets:Sequence[TreeHandler],set_names:Sequence[str], dir_tree:str,tree:str="tree"):
+    '''
+    Parameters:
+        sets(Sequence[TreeHandler]): sets, to eb stored
+        set_names (Sequence[str]): names of the sets
+        dir_tree (str): direction, in which the output .root files will be saved
+        tree (str): Name of the tree in which the output will be saved. Default to "tree"
+        no_set (int): no. of used data set.
+    '''
+    if type(sets)!=list:
+        sets=[sets]
+    if type(set_names)!=list:
+        set_names=set_names
     for (i,name) in zip(sets,set_names):
-        get_root_from_TreeHandler(treehdl=i, save_dir=dir_tree, output_name=f"{name}_{no_set}.root",treename=tree)
+        get_root_from_TreeHandler(treehdl=i, save_dir=dir_tree, output_name=f"{name}.root",treename=tree)
 
 
 #################################
@@ -379,10 +433,10 @@ def find_closest_float_position(array, target):
 #######################
 
 # Function to plot a histogram of a Treehandler object (or a Sequence of TreeHandler)
-def plot_hist(to_plot:List[TreeHandler],vars_to_draw:List[str],no_bins:int=100,leg_labels:Union[Sequence[str],str,None]=None, fs:Union[tuple,None]=(10,7), alpha:Union[float, None]=0.3):
+def plot_hist(to_plot:List[TreeHandler],vars_to_draw:List[str],no_bins:int=100,leg_labels:Union[Sequence[str],str,None]=None, fs:Union[tuple,None]=(10,7), alpha:Union[float, None]=0.3,colors=None):
     if type(leg_labels)!=list:
         leg_labels=[leg_labels]
-    plot_utils.plot_distr(to_plot, vars_to_draw, bins=no_bins, labels=leg_labels, log=True, density=True, figsize=fs, alpha=alpha, grid=False)
+    plot_utils.plot_distr(to_plot, vars_to_draw, bins=no_bins, labels=leg_labels, log=True, density=True, figsize=fs, alpha=alpha, grid=False,colors=colors)
     plt.subplots_adjust(left=0.06, bottom=0.06, right=0.99, top=0.96, hspace=0.55, wspace=0.55)
 
 # Plots a fitted distribuition (at this point only Gauss) to a given TreeHandler columns 
@@ -460,7 +514,7 @@ def fitplot_gauss_rec(data,var:str,no_bins=100,p0:Union[Sequence[float],None]=No
 
 
 # Function to get all possible variables for a comparison plot
-def var_draw_all(tree1:TreeHandler, tree2:TreeHandler)->Sequence[str]:
+def var_draw_all(trees:Sequence[TreeHandler])->Sequence[str]:
     """
     Get all possible variables for a comparison plot
 
@@ -471,8 +525,7 @@ def var_draw_all(tree1:TreeHandler, tree2:TreeHandler)->Sequence[str]:
     Returns:
         Sequence[str]: List containing all shared columns
     """
-    THs=[tree1,tree2]
-    return [dat for dat in THs[0].get_var_names() if all(dat in entry.get_var_names() for entry in THs)]
+    return [dat for dat in trees[0].get_var_names() if all(dat in entry.get_var_names() for entry in trees)]
 
 # Function to plot and save a 2d histogram using PYthon
 def plot_2dhist_numpy(data:TreeHandler, var1:str, var2:str,ax, bin:int=100, cmap:str="rainbow"):
@@ -553,6 +606,7 @@ def plot_2dhist_root(file:str, tree_name:str,  var1:str, var2:str, save_name_fil
         output_file = ROOT.TFile(save_name_file, "RECREATE")
     hist.Write()
     output_file.Close()
+
 
 # Function to plot several histograms in one pdf
 def plot_histograms_grid(root_file:str,save_name_pdf:str):
