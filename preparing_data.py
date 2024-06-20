@@ -3,14 +3,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from hipe4ml.tree_handler import TreeHandler
 from hipe4ml import plot_utils
-from typing import Union, Sequence,List
+from typing import Union, Sequence,List, Tuple
 from scipy import optimize
 import ROOT
 import uproot
 import awkward as ak
 import PyPDF2
 import os
-
+import seaborn as sns
 
 ###################################################
 ### Convert TreeHandler, Arrays and .root Files ###
@@ -70,6 +70,15 @@ def get_variable_names(obj_list, namespace):
             result[obj] = names
     return list(result.values())
 
+def rename_column(file_name:str,file_dir:str,old_column_name:str, new_column_name:str,tree:str="tree"):
+
+    th=TreeHandler(file_name=file_dir+file_name, tree_name=tree)
+    df=th.get_data_frame()
+    df.rename(columns={f'{old_column_name}': f'{new_column_name}'}, inplace=True)
+    th2=TreeHandler()
+    th2.set_data_frame(df)
+    get_root_from_TreeHandler(treehdl=th2,output_name=file_name,save_dir=file_dir,treename=tree)
+    
 ##################################################################
 ### Getting useful data subsets in form of TreeHandler objects ###
 ##################################################################
@@ -241,14 +250,26 @@ def proton_pion_division(data:TreeHandler)->TreeHandler:
     tr.set_data_frame(df)
     return tr
 
-def decayL(data:TreeHandler)->TreeHandler:
+def add_GenRadius(data:TreeHandler)->TreeHandler:
+
+    df=data.get_data_frame()
+    M=1.11568
+    Pt=TreetoArray(data, "fGenPt")
+    Ct=TreetoArray(data, "fGenCt")
+    L=(Ct*Pt)/M
+    df["fGenRadius"]=np.abs(L)
+    tr=TreeHandler()
+    tr.set_data_frame(df)
+    return tr
+
+def add_Radius(data:TreeHandler)->TreeHandler:
 
     df=data.get_data_frame()
     M=TreetoArray(data, "fMass")
     Pt=TreetoArray(data, "fPt")
     Ct=TreetoArray(data, "fCt")
-    L=(Ct*M)/Pt
-    df["fL"]=np.abs(L)
+    L=(Ct*Pt)/M
+    df["fRadius_calc"]=np.abs(L)
     tr=TreeHandler()
     tr.set_data_frame(df)
     return tr
@@ -266,11 +287,11 @@ def get_base_sets(file_directory_data:str, tree_data:str, file_directory_mc:str,
         Sequence[TreeHandler]: prompt, nonprompt, bckg, bckg_MC
     
     '''
-    prompt=decayL(proton_pion_division(get_prompt(file_directory_mc, tree_mc, folder_name=fname)))
-    nonprompt=decayL(proton_pion_division(get_nonprompt(file_directory_mc, tree_mc, folder_name=fname)))
+    prompt=add_GenRadius(proton_pion_division(get_prompt(file_directory_mc, tree_mc, folder_name=fname)))
+    nonprompt=add_GenRadius(proton_pion_division(get_nonprompt(file_directory_mc, tree_mc, folder_name=fname)))
     cu=fit_gauss_rec(get_rawdata(file_directory_data, tree_data, folder_name=fname), var="fMass",p0=[300000,1.115,0.005,1000])[2]
-    bckg_data=decayL(proton_pion_division(get_bckg(file_directory_data, tree_data, cu, folder_name=fname)))
-    bckg_MC=decayL(proton_pion_division(get_MC_bckg(file_directory_mc, tree_mc, folder_name=fname)))
+    bckg_data=add_Radius(proton_pion_division(get_bckg(file_directory_data, tree_data, cu, folder_name=fname)))
+    bckg_MC=add_GenRadius(proton_pion_division(get_MC_bckg(file_directory_mc, tree_mc, folder_name=fname)))
 
     return prompt, nonprompt, bckg_data, bckg_MC
 
@@ -433,9 +454,8 @@ def find_closest_float_position(array, target):
 #######################
 
 # Function to plot a histogram of a Treehandler object (or a Sequence of TreeHandler)
-def plot_hist(to_plot:List[TreeHandler],vars_to_draw:List[str],no_bins:int=100,leg_labels:Union[Sequence[str],str,None]=None, fs:Union[tuple,None]=(10,7), alpha:Union[float, None]=0.3,colors=None):
-    if type(leg_labels)!=list:
-        leg_labels=[leg_labels]
+def plot_hist(to_plot:Union[TreeHandler,Sequence[TreeHandler]], vars_to_draw:Sequence[str], leg_labels:Union[Sequence[str],str], no_bins:int=100,  fs:Union[tuple,None]=(10,7), alpha:Union[float, None]=0.3, colors=None):
+    
     plot_utils.plot_distr(to_plot, vars_to_draw, bins=no_bins, labels=leg_labels, log=True, density=True, figsize=fs, alpha=alpha, grid=False,colors=colors)
     plt.subplots_adjust(left=0.06, bottom=0.06, right=0.99, top=0.96, hspace=0.55, wspace=0.55)
 

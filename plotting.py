@@ -5,9 +5,10 @@ from hipe4ml import plot_utils
 import itertools
 from hipe4ml.tree_handler import TreeHandler
 from typing import Union, Sequence, List
-import seaborn as sns
+import seaborn as sns 
+import os
 
-no_set=2
+no_set=3
 directory_sets=f"/home/katrin/Cern_summerProject/root_trees/set_{no_set}/"
 directory_hists=f"/home/katrin/Cern_summerProject/root_histograms/set_{no_set}/"
 
@@ -45,12 +46,13 @@ def get_sets(already_saved:bool=True):
         print("sets not saved yet")
         prompt, nonprompt, bckg_data, bckg_MC=prep.get_base_sets(file_directory_data=file_directory_data, file_directory_mc=file_directory_mc, tree_data=tree_data, tree_mc=tree_mc, fname=fname)
         
+        #get Mass cutted Baackground
         var_to_cut="fMass"
         lower_cut=1.165
         upper_cut=None
         bckg_cutted_Mass=prep.cut_data(data=bckg_data,var=var_to_cut,lower_cut=lower_cut,upper_cut=upper_cut)
     
-
+        #get Ct cutted Background
         var_to_cut="fCt"
         lower_cut=None
         upper_cut=15
@@ -61,21 +63,16 @@ def get_sets(already_saved:bool=True):
         prep.save_sets(allsets,set_names=names,dir_tree=directory_sets, tree="tree")
         print("Subsets saved!")
 
+    try:
+        filenames= os.listdir(directory_sets)
+    except Exception as e:
+        print("something went wrong: ", e)
 
-        #names=prep.get_variable_names([prompt, nonprompt, bckg_MC,bckg_data,  bckg_cutted_Ct, bckg_cutted_Mass], locals())
-
-    else:
-        prompt=TreeHandler(directory_sets+f"prompt.root", "tree")
-        nonprompt=TreeHandler(directory_sets+f"nonprompt.root", "tree")
-        bckg_data=TreeHandler(directory_sets+f"bckg_data.root", "tree")
-        bckg_MC=TreeHandler(directory_sets+f"bckg_MC.root", "tree")
-        bckg_cutted_Ct=TreeHandler(directory_sets+f"bckg_cutted_Ct.root", "tree")
-        bckg_cutted_Mass=TreeHandler(directory_sets+f"bckg_cutted_Mass.root", "tree")
-
-        allsets=[prompt, nonprompt, bckg_MC, bckg_data,  bckg_cutted_Ct, bckg_cutted_Mass]
-        names=prep.get_variable_names([prompt, nonprompt, bckg_MC, bckg_data,  bckg_cutted_Ct, bckg_cutted_Mass], locals())
+    allsets={}
+    for file in filenames:
+        allsets[file[:-5]]=TreeHandler(directory_sets+file, "tree")
     
-    return allsets, names
+    return allsets
 
 
 def plot_bck_cuts():
@@ -122,15 +119,25 @@ def plot_prompt_cuts():
 
 def plot_allvar_dist(already_saved:bool=True):
 
-    sets,set_names=get_sets(already_saved=already_saved)
+    allsets=get_sets(already_saved=already_saved)
+    sets=list(allsets.values())
+    set_names=list(allsets.keys())
     
-    vars=prep.var_draw_all(sets)
+    
+    vars=[st.get_var_names() for st in sets]
+    vars_shared=[var for var in vars[0] if all(var in sublist for sublist in vars)]
+
     pdf_filename = save_dir_plots+'histograms.pdf'
     pdf = PdfPages(pdf_filename)
-    prep.plot_hist(sets[:2]+sets[3], vars_to_draw=vars,fs=(15,10),leg_labels=set_names[:2]+set_names[3],alpha=0.3)
-    colors=sns.color_palette(n_colors=len(sets))
-    for set,lab,col in zip(sets,set_names,colors):
-        prep.plot_hist(set, vars_to_draw=vars,fs=(15,10),leg_labels=lab,alpha=0.3,colors=col)
+    prep.plot_hist([allsets["prompt"],allsets["nonprompt"],allsets["bckg_data"]], vars_to_draw=vars_shared,leg_labels=["prompt", "nonprompt","bckg_data"],fs=(15,10),alpha=0.3)
+
+    colors=sns.color_palette(n_colors=len(set_names))
+    for i in (0,2,4):
+        print(set_names[i])
+        prep.plot_hist(sets[i], vars_to_draw=vars[i],leg_labels=set_names[i], fs=(15,10) ,alpha=0.3,colors=colors[i])
+    for i in (1,3,5):
+        print(set_names[i])
+        prep.plot_hist(sets[i], vars_to_draw=vars_shared+["fGenPt","fGenCt","fGenRadius"],leg_labels=set_names[i], fs=(15,10) ,alpha=0.3,colors=colors[i])
 
     for fig_num in plt.get_fignums():
         fig = plt.figure(fig_num)
@@ -144,6 +151,7 @@ def plot_some_dist(sets:Sequence[TreeHandler], to_plot:Sequence[str],labels:Sequ
     pdf = PdfPages(pdf_filename)
     if severalpages:
         colors=sns.color_palette(n_colors=len(sets))
+        prep.plot_hist(sets, vars_to_draw=to_plot,fs=(15,10),leg_labels=labels,alpha=0.3,colors=colors)
         for set,lab,col in zip(sets,labels,colors):
             prep.plot_hist(set, vars_to_draw=to_plot,fs=(15,10),leg_labels=lab,alpha=0.3,colors=col)
     else:
@@ -157,23 +165,33 @@ def plot_some_dist(sets:Sequence[TreeHandler], to_plot:Sequence[str],labels:Sequ
 
 def plot_corr(already_saved:bool=True):
 
-    allsets,names=get_sets(already_saved=already_saved)
+    allsets=get_sets(already_saved=already_saved)
+    sets=list(allsets.values())
+    names=list(allsets.keys())
 
-    vars=prep.var_draw_all(allsets)
+    vars=[st.get_var_names() for st in sets]
     pdf_filename = save_dir_plots+"corr.pdf"
     pdf = PdfPages(pdf_filename)
-    plot_utils.plot_corr(allsets,columns=vars,labels=names)
+    for st, variables, nm in zip(sets, vars, names):
+        plot_utils.plot_corr([st], columns=variables, labels=[nm])
     for fig_num in plt.get_fignums():
         fig = plt.figure(fig_num)
         pdf.savefig(fig, bbox_inches="tight")
         plt.close(fig)
     pdf.close()
 
-def plot_some_corr(sets:Sequence[TreeHandler], to_plot:Sequence[str],labels:Sequence[str], file_name:str="output_someCorr.pdf"):
 
+def plot_some_corr(sets:Sequence[TreeHandler],  labels:Sequence[str], to_plot:Union[Sequence[str],None]=None,file_name:str="output_someCorr.pdf"):
+
+    
     pdf_filename = save_dir_plots+file_name
     pdf = PdfPages(pdf_filename)
-    plot_utils.plot_corr(sets,columns=to_plot,labels=labels)
+    if to_plot:
+        plot_utils.plot_corr(sets,columns=to_plot,labels=labels)
+    else:
+        for st, lab in zip(sets, labels):
+            cols=[var for var in st.get_var_names()]
+            plot_utils.plot_corr([st],columns=cols,labels=[lab])
     for fig_num in plt.get_fignums():
         fig = plt.figure(fig_num)
         pdf.savefig(fig, bbox_inches="tight")
@@ -183,7 +201,9 @@ def plot_some_corr(sets:Sequence[TreeHandler], to_plot:Sequence[str],labels:Sequ
 
 def plot_2dhist_numpy(already_saved:bool=True):
 
-    sets,set_names=get_sets(already_saved=already_saved)
+    allsets=get_sets(already_saved=already_saved)
+    sets=list(allsets.values())
+    set_names=list(allsets.keys())
 
     l1=["fDcaV0PV", "fCosPA"]
     l2=["fCt","fPt"]
@@ -231,24 +251,30 @@ def plot_2dhist_root(file_names:Sequence[str], set_names:Sequence[str], varsx:Se
 
 def analysis_cutted_subsets(already_saved:bool=True):
 
-    allsets,names=get_sets(already_saved=already_saved)
+    allsets=get_sets(already_saved=already_saved)
+    sets=list(allsets.values())
+    set_names=list(allsets.keys())
 
 
+    files={}
+    for nm in set_names:
+        files[nm]=directory_sets+nm+".root"
 
 
-    
-    #vars=["fCt","fL","fRadius","fMass"]
-    #vars=prep.var_draw_all(allsets)
-    #plot_some_dist(sets=allsets[3:],to_plot=vars,labels=prep.get_variable_names(allsets[3:],locals()),file_name="cuttedBckg_hist_sep.pdf",severalpages=True)
-    #plot_some_dist(sets=[bckg,bckg_cutted_Ct],to_plot=vars,labels=["bckg","Ct cutted bckg"],file_name="Ct_cuttedBckg_hist.pdf")
+    vars=[st.get_var_names() for st in sets]
+    vars_shared=[var for var in vars[0] if all(var in sublist for sublist in vars)]
 
-    #plot_some_corr(sets=allsets[3:],to_plot=vars,labels=prep.get_variable_names(allsets[3:],locals()),file_name="cuttedBckg_corr.pdf")
-    #plot_some_corr(sets=[bckg,bckg_cutted_Ct],to_plot=vars,labels=["bckg","Ct cutted bckg"],file_name="Ct_cuttedBckg_corr.pdf")
-    files=[directory_sets+"prompt.root",directory_sets+"nonprompt.root"]
-    plot_2dhist_root(file_names=files,set_names=["prompt","nonprompt"],varsx=["fRadius"],varsy=["fCt","fL"],pdf_name="2dhist_decaylength.pdf")
-    #plot_2dhist_root(sets=[bckg_data,bckg_cutted_Mass,bckg_cutted_Ct],set_names=prep.get_variable_names([bckg_data,bckg_cutted_Mass, bckg_cutted_Ct],locals()),varsx=["fRadius"],varsy=["fCt","fL"],pdf_name="2dhist_Radius_Ct_L.pdf")
-    #plot_2dhist_root(sets=[bckg_data,bckg_cutted_Mass,bckg_cutted_Ct],set_names=prep.get_variable_names([bckg_data,bckg_cutted_Mass, bckg_cutted_Ct],locals()),varsx=["fRadius"],varsy=["fCt","fL"],pdf_name="2dhist_Radius_Ct_L.pdf")
+    #plot_some_dist([bckgMC_cutted_training_low, allsets["bckg_MC"]],to_plot=vars_shared+["trainBckgMC_class0","trainBckgMC_class1","trainBckgMC_class2"],labels=["lowcutted_bckg_MC","bckg_MC"],file_name="hist_bckgMC_trainlow.pdf",severalpages=True)
+    #plot_some_dist([bckgMC_cutted_training_high, allsets["bckg_MC"]],to_plot=vars_shared+["trainBckgMC_class0","trainBckgMC_class1","trainBckgMC_class2"],labels=["upcutted_bckg_MC","bckg_MC"],file_name="hist_bckgMC_trainhigh.pdf",severalpages=True)
+    #plot_some_dist([bckgdata_cutted_training_low, allsets["bckg_data"]],to_plot=vars_shared+["trainBckgdata_class0","trainBckgdata_class1","trainBckgdata_class2"],labels=["lowcutted_bckg_data","bckg_data"],file_name="hist_bckgdata_trainlow.pdf",severalpages=True)
+    #plot_some_dist([bckgdata_cutted_training_high, allsets["bckg_data"]],to_plot=vars_shared+["trainBckgdata_class0","trainBckgdata_class1","trainBckgdata_class2"],labels=["upcutted_bckg_data","bckg_data"],file_name="hist_bckgdata_trainhigh.pdf",severalpages=True)
 
-plot_corr(already_saved=False)
-analysis_cutted_subsets(already_saved=True)
+    plot_some_dist([allsets["bckgMC_cuttedRadius"],allsets["prompt_cuttedRadius"],allsets["nonprompt_cuttedRadius"]],to_plot=vars_shared+["trainBckgMC_cutRadius_class0","trainBckgMC_cutRadius_class1","trainBckgMC_cutRadius_class2"],labels=["bckgMC_cuttedRadius","prompt_cuttedRadius","nonprompt_cuttedRadius"],file_name="hist_mlsetsMC_cuttedRadius.pdf",severalpages=True)
+    plot_some_dist([allsets["bckgdata_cuttedRadius"],allsets["prompt_cuttedRadius"],allsets["nonprompt_cuttedRadius"]],to_plot=vars_shared+["trainBckgdata_cutRadius_class0","trainBckgdata_cutRadius_class1","trainBckgdata_cutRadius_class2"],labels=["bckgdata_cuttedRadius","prompt_cuttedRadius","nonprompt_cuttedRadius"],file_name="hist_mlsetsdata_cuttedRadius.pdf",severalpages=True)
 
+#for i in (0,1,2):
+#    prep.rename_column(file_name="bckgdata_cuttedRadius_high.root", file_dir=directory_sets, old_column_name=f"trainBckgdata_cutR_class{i}", new_column_name=f"trainBckgdata_cutR_high_class{i}")
+#    prep.rename_column(file_name="bckgMC_cuttedRadius_high.root", file_dir=directory_sets, old_column_name=f"trainBckgMC_cutR_class{i}", new_column_name=f"trainBckgMC_cutR_high_class{i}")
+
+
+analysis_cutted_subsets()
