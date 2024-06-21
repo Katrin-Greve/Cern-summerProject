@@ -11,7 +11,7 @@ import os
 no_set=3
 directory_sets=f"/home/katrin/Cern_summerProject/root_trees/set_{no_set}/"
 directory_hists=f"/home/katrin/Cern_summerProject/root_histograms/set_{no_set}/"
-
+save_dir_plots = f'/home/katrin/Cern_summerProject/imgs/set_{no_set}/'
 
 
 if no_set==1:
@@ -19,7 +19,6 @@ if no_set==1:
     tree_data="O2lambdatableml"
     file_directory_mc="/home/katrin/Cern_summerProject/data/AnalysisResults_treesML.root"
     tree_mc="O2mclambdatableml"
-    save_dir_plots = '/home/katrin/Cern_summerProject/imgs/first_data/'
     fname=None
 
 if no_set==3:
@@ -28,7 +27,6 @@ if no_set==3:
     file_directory_mc="/home/katrin/Cern_summerProject/data/AO2D_MC.root"
     tree_mc="O2mclambdatableml"
     fname="DF*"
-    save_dir_plots = '/home/katrin/Cern_summerProject/imgs/third_data/'
 
 
 if no_set==2:
@@ -37,7 +35,6 @@ if no_set==2:
     file_directory_mc="/home/katrin/Cern_summerProject/data/AnalysisResults_treesML_mc_LHC24b1b_small.root"
     tree_mc="O2mclambdatableml"
     fname=None
-    save_dir_plots = '/home/katrin/Cern_summerProject/imgs/second_data/'
 
 
 def get_sets(already_saved:bool=True):
@@ -231,7 +228,7 @@ def plot_2dhist_numpy(already_saved:bool=True):
 def plot_2dhist_root(file_names:Sequence[str], set_names:Sequence[str], varsx:Sequence[str], varsy:Sequence[str], pdf_name:str="some_2dhist.pdf", save_dir:str="output.root"):
 
     tree="tree"
-    dir_result=f"/home/katrin/Cern_summerProject/root_histograms/set_{no_set}/"
+    dir_result=directory_hists
     bins=100
     l1=varsx
     l2=varsy
@@ -269,8 +266,9 @@ def analysis_cutted_subsets(already_saved:bool=True):
     #plot_some_dist([bckgdata_cutted_training_low, allsets["bckg_data"]],to_plot=vars_shared+["trainBckgdata_class0","trainBckgdata_class1","trainBckgdata_class2"],labels=["lowcutted_bckg_data","bckg_data"],file_name="hist_bckgdata_trainlow.pdf",severalpages=True)
     #plot_some_dist([bckgdata_cutted_training_high, allsets["bckg_data"]],to_plot=vars_shared+["trainBckgdata_class0","trainBckgdata_class1","trainBckgdata_class2"],labels=["upcutted_bckg_data","bckg_data"],file_name="hist_bckgdata_trainhigh.pdf",severalpages=True)
 
-    plot_some_dist([allsets["bckgMC_cuttedRadius"],allsets["prompt_cuttedRadius"],allsets["nonprompt_cuttedRadius"]],to_plot=vars_shared+["trainBckgMC_cutRadius_class0","trainBckgMC_cutRadius_class1","trainBckgMC_cutRadius_class2"],labels=["bckgMC_cuttedRadius","prompt_cuttedRadius","nonprompt_cuttedRadius"],file_name="hist_mlsetsMC_cuttedRadius.pdf",severalpages=True)
-    plot_some_dist([allsets["bckgdata_cuttedRadius"],allsets["prompt_cuttedRadius"],allsets["nonprompt_cuttedRadius"]],to_plot=vars_shared+["trainBckgdata_cutRadius_class0","trainBckgdata_cutRadius_class1","trainBckgdata_cutRadius_class2"],labels=["bckgdata_cuttedRadius","prompt_cuttedRadius","nonprompt_cuttedRadius"],file_name="hist_mlsetsdata_cuttedRadius.pdf",severalpages=True)
+    #plot_some_dist([allsets["bckg_MC_cuttedRadius"],allsets["prompt_cuttedRadius"],allsets["nonprompt_cuttedRadius"]],to_plot=vars_shared+["trainBckgMC_cuttedRadius_class0","trainBckgMC_cuttedRadius_class1","trainBckgMC_cuttedRadius_class2"],labels=["bckg_MC_cuttedRadius","prompt_cuttedRadius","nonprompt_cuttedRadius"],file_name="hist_mlsetsMC_cuttedRadius.pdf",severalpages=True)
+    #plot_some_dist([allsets["bckg_MC_cuttedMassRadius"],allsets["prompt_cuttedRadius"],allsets["nonprompt_cuttedRadius"]],to_plot=vars_shared+["trainBckgMC_cuttedMassRadius_class0","trainBckgMC_cuttedMassRadius_class1","trainBckgMC_cuttedMassRadius_class2"],labels=["bckg_MC_cuttedMassRadius","prompt_cuttedRadius","nonprompt_cuttedRadius"],file_name="hist_mlsetsMC_cuttedMassRadius.pdf",severalpages=True)
+    plot_some_dist([allsets["bckg_MC_cuttedMass"],allsets["prompt"],allsets["nonprompt"]],to_plot=vars_shared+["trainBckgMC_cuttedMass_class0","trainBckgMC_cuttedMass_class1","trainBckgMC_cuttedMass_class2"]+["trainBckgMC_cuttedMass_withCt_class0","trainBckgMC_cuttedMass_withCt_class1","trainBckgMC_cuttedMass_withCt_class2"],labels=["bckg_MC_cuttedMass","prompt","nonprompt"],file_name="hist_mlsetsMC_cuttedMass_withCt.pdf",severalpages=True)
 
 #for i in (0,1,2):
 #    prep.rename_column(file_name="bckgdata_cuttedRadius_high.root", file_dir=directory_sets, old_column_name=f"trainBckgdata_cutR_class{i}", new_column_name=f"trainBckgdata_cutR_high_class{i}")

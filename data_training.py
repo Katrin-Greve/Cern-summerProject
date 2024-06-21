@@ -13,10 +13,11 @@ import preparing_data as prep
 from matplotlib.backends.backend_pdf import PdfPages
 import os
 
+
 no_set=3
 
 directory_sets=f"/home/katrin/Cern_summerProject/root_trees/set_{no_set}/"
-save_dir_plots=f"/home/katrin/Cern_summerProject/imgs/ml_plots/set_{no_set}/"
+save_dir_plots=f"/home/katrin/Cern_summerProject/ml_plots/set_{no_set}/"
 
 if no_set==3:
     file_directory_data="/home/katrin/Cern_summerProject/data/AO2D_data.root"
@@ -40,36 +41,68 @@ if no_set==1:
     tree_mc="O2mclambdatableml"
     fname=None
 
-def define_model():
+def define_model(features_to_learn:Sequence[str]):
     model_clf = xgb.XGBClassifier()
-    features_to_learn=["fDcaV0PV","fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion"]
     model_hdl = ModelHandler(model_clf, features_to_learn)
 
     return model_hdl
 
-def traindata(training_sets:Sequence[TreeHandler], set_names:Sequence[str], name_training:str="train0"):
+def traindata_plotting(training_sets:Sequence[TreeHandler], set_names:Sequence[str],features_to_learn:Sequence[str]=["fDcaV0PV","fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion"], name_training:str="train0", equal_no_cand:bool=False):
 
-    train_test_data = train_test_generator(training_sets, [0, 1, 2], test_size=0.5, random_state=42)
+    if not equal_no_cand:
+        train_test_data = train_test_generator(training_sets, [0, 1, 2], test_size=0.5, random_state=42)
+    else:
+        training_sets_equ=[]
+        minim_cand=min([tset.get_n_cand() for tset in training_sets])
+        print("No. of candidates in smallest set: ", minim_cand)
+        for i in range(len(training_sets)):
+            training_sets_equ.append(training_sets[i].get_subset(size=minim_cand))
+        train_test_data = train_test_generator(training_sets_equ, [0, 1, 2], test_size=0.5, random_state=42)
+
+    model=define_model(features_to_learn=features_to_learn)
+    model.train_test_model(train_test_data, multi_class_opt="ovo")
+    for st,name in zip(training_sets,set_names):
+        st.apply_model_handler(model_handler=model,column_name=[name_training+"_class0",name_training+"_class1",name_training+"_class2"])
+        prep.get_root_from_TreeHandler(treehdl=st,output_name=name+".root",save_dir=directory_sets,treename="tree")
+
+    plot_bdt(train_test_data, model_hdl=model, marg=True, save_fig="True", filename=name_training+"_bdt.pdf")
+    plot_roc(train_test_data=train_test_data, model_hdl=model, filename=name_training+"_roc.pdf")
+    plot_featimport(data=train_test_data,model=model,filename=name_training+"_featimp.pdf")
+
+    
+def traindata(training_sets:Sequence[TreeHandler], set_names:Sequence[str],features_to_learn:Sequence[str]=["fDcaV0PV","fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion"], name_training:str="train0", equal_no_cand:bool=False):
+
+    if not equal_no_cand:
+        train_test_data = train_test_generator(training_sets, [0, 1, 2], test_size=0.5, random_state=42)
+    else:
+        training_sets_equ=[]
+        minim_cand=min([tset.get_n_cand() for tset in training_sets])
+        print(minim_cand)
+        for i in range(len(training_sets)):
+            training_sets_equ.append(training_sets[i].get_subset(size=minim_cand))
+
+        train_test_data = train_test_generator(training_sets_equ, [0, 1, 2], test_size=0.5, random_state=42)
+
     model=define_model()
     model.train_test_model(train_test_data, multi_class_opt="ovo")
     for st,name in zip(training_sets,set_names):
         st.apply_model_handler(model_handler=model,column_name=[name_training+"_class0",name_training+"_class1",name_training+"_class2"])
         prep.get_root_from_TreeHandler(treehdl=st,output_name=name+".root",save_dir=directory_sets,treename="tree")
-    plot_bdt(train_test_data, model_hdl=model, marg=True, save_fig="True", filename=name_training+".pdf")
 
     return train_test_data,model
 
 
-def plot_roc(train_test_data, model_hdl:ModelHandler,save_fig:bool=False,filename:str="ouput.pdf"):
+def plot_roc(train_test_data, model_hdl:ModelHandler,save_fig:bool=True,filename:str="roc_ouput.pdf"):
     
     y_pred_train = model_hdl.predict(train_test_data[0], False) #prediction for training data set
     y_pred_test = model_hdl.predict(train_test_data[2], False)  #prediction for test data set
     plot_utils.plot_roc(train_test_data[3], y_pred_test, None, multi_class_opt="ovo")
     if save_fig:
         plt.savefig(save_dir_plots+filename)
+        plt.close()
 
 
-def plot_bdt(train_test_data, model_hdl:ModelHandler, marg:bool=False, save_fig:bool=False, filename:str="ouput.pdf"):
+def plot_bdt(train_test_data, model_hdl:ModelHandler, marg:bool=False, save_fig:bool=True, filename:str="bdt_ouput.pdf"):
 
     pdf_filename = save_dir_plots+filename
     pdf = PdfPages(pdf_filename)
@@ -80,6 +113,20 @@ def plot_bdt(train_test_data, model_hdl:ModelHandler, marg:bool=False, save_fig:
             pdf.savefig(fig, bbox_inches="tight")
             plt.close(fig)
         pdf.close()
+
+def plot_featimport(data:Sequence[Union[pd.DataFrame,np.array]],model:ModelHandler,save_fig:bool=True, filename:str="output_featimp.pdf"):
+
+    pdf_filename = save_dir_plots+filename
+    pdf = PdfPages(pdf_filename)
+    plot_utils.plot_feature_imp(data[0],y_truth=data[1], model=model,labels=["Bckg", "nonprompt","prompt"])
+    plot_utils.plot_feature_imp(data[2],y_truth=data[3], model=model,labels=["Bckg", "nonprompt","prompt"])
+
+    if save_fig:
+        for fig_num in plt.get_fignums():
+            fig = plt.figure(fig_num)
+            pdf.savefig(fig, bbox_inches="tight")
+            plt.close(fig)
+        pdf.close()    
 
 
 def get_subsets(already_saved:bool=True):
@@ -116,27 +163,24 @@ def get_subsets(already_saved:bool=True):
     
     return allsets
 
-allsets=get_subsets(already_saved=False)
-
-#bckgdata_cuttedV0Tracks=prep.cut_data(data=prep.cut_data(data=allsets["bckg_data"],var="fMass",lower_cut=1.09, upper_cut=1.13,inclusive=False),var="fDcaV0Tracks",lower_cut=0.125, upper_cut=None)
-#bckgMC_cuttedV0Tracks=prep.cut_data(data=prep.cut_data(data=allsets["bckg_MC"],var="fMass",lower_cut=1.09, upper_cut=1.13,inclusive=False),var="fDcaV0Tracks",lower_cut=0.125, upper_cut=None)
-#prompt_cuttedV0Tracks=prep.cut_data(data=allsets["prompt"],var="fDcaV0Tracks",lower_cut=0.125, upper_cut=None)
-#nonprompt_cuttedV0Tracks=prep.cut_data(data=allsets["nonprompt"],var="fDcaV0Tracks",lower_cut=0.125, upper_cut=None)
-#prep.save_sets(sets=[bckgMC_cuttedV0Tracks,bckgdata_cuttedV0Tracks,prompt_cuttedV0Tracks,nonprompt_cuttedV0Tracks],set_names=["bckgMC_cuttedV0Tracks","bckgdata_cuttedV0Tracks","prompt_cuttedV0Tracks","nonprompt_cuttedV0Tracks"],dir_tree=directory_sets)
-#
-#traindata([bckgdata_cuttedV0Tracks,prompt_cuttedV0Tracks,nonprompt_cuttedV0Tracks],["bckgdata_cuttedV0Tracks", "nonprompt_cuttedV0Tracks", "prompt_cuttedV0Tracks"],name_training="trainBckgdata_cutV0Tracks")
-#traindata([bckgMC_cuttedV0Tracks,prompt_cuttedV0Tracks,nonprompt_cuttedV0Tracks],["bckgMC_cuttedV0Tracks", "nonprompt_cuttedV0Tracks", "prompt_cuttedV0Tracks"],name_training="trainBckgMC_cutV0Tracks")
+#sets=get_subsets(already_saved=True)
 
 
-bckgdata_cuttedRadius=prep.cut_data(data=prep.cut_data(data=allsets["bckg_data"],var="fMass",lower_cut=1.09, upper_cut=1.13,inclusive=False),var="fRadius",lower_cut=None, upper_cut=20)
-bckgMC_cuttedRadius=prep.cut_data(data=prep.cut_data(data=allsets["bckg_MC"],var="fMass",lower_cut=1.09, upper_cut=1.13,inclusive=False),var="fRadius",lower_cut=None, upper_cut=20)
-prompt_cuttedRadius=prep.cut_data(data=allsets["prompt"],var="fRadius",lower_cut=None, upper_cut=20)
-nonprompt_cuttedRadius=prep.cut_data(data=allsets["nonprompt"],var="fRadius",lower_cut=None, upper_cut=20)
-prep.save_sets(sets=[bckgMC_cuttedRadius,bckgdata_cuttedRadius,prompt_cuttedRadius,nonprompt_cuttedRadius],set_names=["bckgMC_cuttedRadius","bckgdata_cuttedRadius","prompt_cuttedRadius","nonprompt_cuttedRadius"],dir_tree=directory_sets)
+#bckg_MC_cuttedMass=prep.cut_data(data=allsets["bckg_MC"],var="fMass",lower_cut=1.09, upper_cut=1.13,inclusive=False)
+#bckg_MC_cuttedMass2=prep.cut_data(data=sets["bckg_MC"],var="fMass",lower_cut=1.09, upper_cut=1.15,inclusive=False)
 
-traindata([bckgdata_cuttedRadius,prompt_cuttedRadius,nonprompt_cuttedRadius],["bckgdata_cuttedRadius", "nonprompt_cuttedRadius", "prompt_cuttedRadius"],name_training="trainBckgdata_cutRadius")
-traindata([bckgMC_cuttedRadius,prompt_cuttedRadius,nonprompt_cuttedRadius],["bckgMC_cuttedRadius", "nonprompt_cuttedRadius", "prompt_cuttedRadius"],name_training="trainBckgMC_cutRadius")
-#traindata([bckgMC_cuttedRadius_high,allsets["nonprompt"],allsets["prompt"]],["bckgMC_cuttedRadius_high","nonprompt", "prompt"],name_training="trainBckgMC_cutR_high")
-#traindata([allsets["bckg_cutted_Mass"],allsets["nonprompt"],allsets["prompt"]],["bckg_cutted_Mass", "nonprompt", "prompt"],name_training="Trainmasscut")
-#traindata([allsets["bckg_MC"],allsets["nonprompt"],allsets["prompt"]],["bckg_MC","nonprompt", "prompt"],name_training="trainBckgMC")
-#traindata([allsets["bckg_data"],allsets["nonprompt"],allsets["prompt"]],["bckg_data","nonprompt", "prompt"],name_training="trainBckgdata")
+#bckg_MC_cuttedRadius=prep.cut_data(data=allsets["bckg_MC"],var="fRadius",lower_cut=None, upper_cut=20)
+#bckg_MC_cuttedMassRadius=prep.cut_data(data=bckg_MC_cuttedMass, var="fRadius", lower_cut=None, upper_cut=20)
+#prompt_cuttedRadius=prep.cut_data(data=allsets["prompt"],var="fRadius",lower_cut=None, upper_cut=20)
+#nonprompt_cuttedRadius=prep.cut_data(data=allsets["nonprompt"],var="fRadius",lower_cut=None, upper_cut=20)
+#prep.save_sets(sets=[bckg_MC_cuttedMass,bckg_MC_cuttedMass2,bckg_MC_cuttedRadius, bckg_MC_cuttedMassRadius,prompt_cuttedRadius,nonprompt_cuttedRadius],set_names=["bckg_MC_cuttedMass","bckg_MC_cuttedMass2","bckg_MC_cuttedRadius","bckg_MC_cuttedMassRadius","prompt_cuttedRadius","nonprompt_cuttedRadius"],dir_tree=directory_sets)
+#prep.save_sets([bckg_MC_cuttedMass2],set_names=["bckg_MC_cuttedMass2"],dir_tree=directory_sets)
+allsets=get_subsets(already_saved=True)
+
+
+
+#traindata_plotting([allsets["bckg_MC_cuttedRadius"],allsets["nonprompt_cuttedRadius"],allsets["prompt_cuttedRadius"]],set_names=["bckg_MC_cuttedRadius","nonprompt_cuttedRadius", "prompt_cuttedRadius"],name_training="trainBckgMC_cuttedRadius",features_to_learn=["fDcaV0PV","fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion"])
+#traindata_plotting([allsets["bckg_MC_cuttedMassRadius"],allsets["nonprompt_cuttedRadius"],allsets["prompt_cuttedRadius"]],set_names=["bckg_MC_cuttedMassRadius","nonprompt_cuttedRadius", "prompt_cuttedRadius"],name_training="trainBckgMC_cuttedMassRadius",features_to_learn=["fDcaV0PV","fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion"])
+traindata_plotting([allsets["bckg_MC_cuttedMass"],allsets["nonprompt"],allsets["prompt"]],set_names=["bckg_MC_cuttedMass","nonprompt", "prompt"],name_training="trainBckgMC_cuttedMass_withCt",features_to_learn=["fDcaV0PV","fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion","fCt"])
+
+#traindata_plotting([allsets["bckg_MC_cuttedMass2"],allsets["nonprompt"],allsets["prompt"]],set_names=["bckg_MC_cuttedMass2","nonprompt", "prompt"],name_training="trainBckgMC_cuttedMass2",features_to_learn=["fDcaV0PV","fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion"])
