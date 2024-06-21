@@ -36,14 +36,19 @@ if no_set==2:
     tree_mc="O2mclambdatableml"
     fname=None
 
-
+# function to get the usual needed data sets
 def get_sets(already_saved:bool=True):
+    """
+    Get the usual needed data sets
 
+    Parameters:
+        already_saved (bool): Decides whether the data sets have to be calculated or are already saved as a root file. Default to True
+    """
     if already_saved==False:
         print("sets not saved yet")
         prompt, nonprompt, bckg_data, bckg_MC=prep.get_base_sets(file_directory_data=file_directory_data, file_directory_mc=file_directory_mc, tree_data=tree_data, tree_mc=tree_mc, fname=fname)
         
-        #get Mass cutted Baackground
+        #get Mass cutted Background
         var_to_cut="fMass"
         lower_cut=1.165
         upper_cut=None
@@ -71,7 +76,7 @@ def get_sets(already_saved:bool=True):
     
     return allsets
 
-
+# function to visualize, how one gets the background out of the data by using cuts on the mass
 def plot_bck_cuts():
 
     data=prep.get_rawdata(file_directory_data,tree_data, folder_name=fname)
@@ -80,7 +85,6 @@ def plot_bck_cuts():
     prep.plot_hist(data,"fMass",leg_labels="raw data", fs=(8,3),alpha=0.5)
 
     cu2=prep.fitplot_gauss_rec(data, var="fMass",p0=[300000,1.115,0.005,1000],fs=(8,3),sig_cut=11)[2]
-    #cu2=prep.fit_gauss_rec(data, var="fMass",p0=[300000,1.115,0.005,1000],sig_cut=9)[2]
     bckg=prep.get_bckg(file_directory_data, tree_data, cuts=cu2, folder_name=fname)
 
     prep.plot_hist(bckg,"fMass",leg_labels="bckg",fs=(8,3),alpha=0.5)
@@ -91,8 +95,9 @@ def plot_bck_cuts():
         plt.close(fig)
     pdf.close()
 
-
-def plot_prompt_cuts():
+#function that shows the distribution of the MC data, the prompt and the nonprompt distribution
+def plot_prompt_nonprompt():
+    
     data=prep.get_rawMC_data(file_directory_mc, tree_mc ,folder_name=fname)
     pdf_filename =save_dir_plots+'prep_MLdata_prompt.pdf'
     pdf = PdfPages(pdf_filename)
