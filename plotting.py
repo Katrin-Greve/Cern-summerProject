@@ -8,7 +8,7 @@ from typing import Union, Sequence, List
 import seaborn as sns 
 import os
 
-no_set=3
+no_set=4
 directory_sets=f"/home/katrin/Cern_summerProject/root_trees/set_{no_set}/"
 directory_hists=f"/home/katrin/Cern_summerProject/root_histograms/set_{no_set}/"
 save_dir_plots = f'/home/katrin/Cern_summerProject/imgs/set_{no_set}/'
@@ -36,6 +36,12 @@ if no_set==2:
     tree_mc="O2mclambdatableml"
     fname=None
 
+if no_set==4:
+    file_directory_data="/home/katrin/Cern_summerProject/data/AO2D_data.root"
+    tree_data="O2lambdatableml"
+    file_directory_mc="/home/katrin/Cern_summerProject/data/AO2D_MC_daughters.root"
+    tree_mc="O2mclambdatableml"
+    fname="DF*"
 
 # function to get the usual needed data sets
 def get_sets(already_saved:bool=True):
