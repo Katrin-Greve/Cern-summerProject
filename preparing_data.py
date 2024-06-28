@@ -211,7 +211,10 @@ def cut_data(data:TreeHandler, var:str, lower_cut:Union[float,None]=None,upper_c
 
     if inclusive:
         if upper_cut and lower_cut:
-            cutted=data.get_subset(f'{var}>{lower_cut} and {var}<{upper_cut}')
+            if upper_cut==lower_cut:
+                cutted=data.get_subset(f'{var}=={lower_cut}')
+            else:
+                cutted=data.get_subset(f'{var}>{lower_cut} and {var}<{upper_cut}')
         if upper_cut and not lower_cut:
             cutted=data.get_subset(f'{var}<{upper_cut}')
         if lower_cut and not upper_cut:
@@ -220,8 +223,14 @@ def cut_data(data:TreeHandler, var:str, lower_cut:Union[float,None]=None,upper_c
             cutted=data
     else:
         if upper_cut and lower_cut:
-            cutted=data.get_subset(f'{var}<{lower_cut} or {var}>{upper_cut}')
+            if upper_cut==lower_cut:
+                cutted=data.get_subset(f'{var}!={lower_cut}')
+            else:
+                cutted=data.get_subset(f'{var}<{lower_cut} or {var}>{upper_cut}')
+
     return cutted
+
+
 
 #############################################
 ### Adding useful columns to TreeHandlers ###
@@ -273,6 +282,16 @@ def add_Radius(data:TreeHandler)->TreeHandler:
     tr=TreeHandler()
     tr.set_data_frame(df)
     return tr
+
+def filter_data(data:TreeHandler, var:Union[str,Sequence[str]], values:Union[float, Sequence[float]], equal:Union[bool,Sequence[bool]]=[True])->TreeHandler:
+
+    for vr,vl, eq in zip(var,values, equal):
+        if eq:
+            data=data.get_subset(f'{vr}=={vl}')
+        else:
+            data=data.get_subset(f'{vr}!={vl}')
+    return data
+
 
 def get_base_sets(file_directory_data:str, tree_data:str, file_directory_mc:str, tree_mc:str, fname:Union[str,None]=None)->Sequence[TreeHandler]:
     '''

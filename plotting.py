@@ -7,6 +7,7 @@ from hipe4ml.tree_handler import TreeHandler
 from typing import Union, Sequence, List
 import seaborn as sns 
 import os
+import numpy as np
 
 no_set=4
 directory_sets=f"/home/katrin/Cern_summerProject/root_trees/set_{no_set}/"
@@ -37,9 +38,9 @@ if no_set==2:
     fname=None
 
 if no_set==4:
-    file_directory_data="/home/katrin/Cern_summerProject/data/AO2D_data.root"
+    file_directory_data="/home/katrin/Cern_summerProject/data/AO2D_data_new.root"
     tree_data="O2lambdatableml"
-    file_directory_mc="/home/katrin/Cern_summerProject/data/AO2D_MC_daughters.root"
+    file_directory_mc="/home/katrin/Cern_summerProject/data/A02D_MC_daughters.root"
     tree_mc="O2mclambdatableml"
     fname="DF*"
 
@@ -71,7 +72,8 @@ def get_sets(already_saved:bool=True):
         names=prep.get_variable_names(allsets,locals())
         prep.save_sets(allsets,set_names=names,dir_tree=directory_sets, tree="tree")
         print("Subsets saved!")
-
+    else:
+        print("Subsets already saved")
     try:
         filenames= os.listdir(directory_sets)
     except Exception as e:
@@ -257,6 +259,48 @@ def plot_2dhist_root(file_names:Sequence[str], set_names:Sequence[str], varsx:Se
 
     prep.merge_pdfs(pdf_list=pdflist,output_path=dir_result+pdf_name)
 
+def scans(vals:Sequence[float],data:TreeHandler,var:str,vars_to_plot:Sequence[str], uppercuts:bool=True,base:float=None,filename:str="output_scan.pdf"):
+    pdfs=[]
+    if uppercuts:
+        if base:
+            for val in vals:
+                data_cutted=prep.cut_data(data=data, var=var, upper_cut=val, lower_cut=base)
+                plot_some_dist([data_cutted], to_plot=vars_to_plot,labels=[f"data cutted {var}: ({base},{val})"],file_name=f"cut_val{val}.pdf")
+                pdfs.append(save_dir_plots+f"cut_val{val}.pdf")
+            prep.merge_pdfs(pdfs, output_path=save_dir_plots+filename)
+        else:
+            for val in vals:
+                data_cutted=prep.cut_data(data=data, var=var, upper_cut=val)
+                plot_some_dist([data_cutted], to_plot=vars_to_plot,labels=[f"data cutted {var}: (None,{val})"],file_name=f"cut_val{val}.pdf")
+                pdfs.append(save_dir_plots+f"cut_val{val}.pdf")
+            prep.merge_pdfs(pdfs, output_path=save_dir_plots+filename)
+    else:
+        if base:
+            for val in vals:
+                data_cutted=prep.cut_data(data=data, var=var, upper_cut=base, lower_cut=val)
+                plot_some_dist([data_cutted], to_plot=vars_to_plot,labels=[f"data cutted {var}: ({val},{base})"],file_name=f"cut_val{val}.pdf")
+                pdfs.append(save_dir_plots+f"cut_val{val}.pdf")
+            prep.merge_pdfs(pdfs, output_path=save_dir_plots+filename)
+        else:
+            for val in vals:
+                data_cutted=prep.cut_data(data=data, var=var, lower_cut=val)
+                plot_some_dist([data_cutted], to_plot=vars_to_plot,labels=[f"data cutted {var}: ({val},None)"],file_name=f"cut_val{val}.pdf")
+                pdfs.append(save_dir_plots+f"cut_val{val}.pdf")
+            prep.merge_pdfs(pdfs, output_path=save_dir_plots+filename)
+
+def plot_comb_daughterPDG(var:Sequence[str],data:TreeHandler):
+    pdfs=[]
+    l1=list(set(prep.TreetoArray(data,var="fPDGCodeDauPos")))
+    l2=list(set(prep.TreetoArray(data,var="fPDGCodeDauNeg")))
+    
+    for i,j in list(itertools.product(l1, l2)):
+        print(i,j)
+        st=prep.cut_data(data,var="fPDGCodeDauPos", upper_cut=i, lower_cut=i)
+        plot_some_dist([st], to_plot=var, labels=[f"bckg_MC with PDGCodeDauPos={i} \n PDGCodeDauNeg={j}"],file_name=f"DistDau{i}_{j}.pdf")
+        pdfs.append(save_dir_plots+f"DistDau{i}_{j}.pdf")
+    prep.merge_pdfs(pdfs,output_path=save_dir_plots+"Dist_daughterpairs.pdf")
+
+
 
 def analysis_cutted_subsets(already_saved:bool=True):
 
@@ -280,11 +324,17 @@ def analysis_cutted_subsets(already_saved:bool=True):
 
     #plot_some_dist([allsets["bckg_MC_cuttedRadius"],allsets["prompt_cuttedRadius"],allsets["nonprompt_cuttedRadius"]],to_plot=vars_shared+["trainBckgMC_cuttedRadius_class0","trainBckgMC_cuttedRadius_class1","trainBckgMC_cuttedRadius_class2"],labels=["bckg_MC_cuttedRadius","prompt_cuttedRadius","nonprompt_cuttedRadius"],file_name="hist_mlsetsMC_cuttedRadius.pdf",severalpages=True)
     #plot_some_dist([allsets["bckg_MC_cuttedMassRadius"],allsets["prompt_cuttedRadius"],allsets["nonprompt_cuttedRadius"]],to_plot=vars_shared+["trainBckgMC_cuttedMassRadius_class0","trainBckgMC_cuttedMassRadius_class1","trainBckgMC_cuttedMassRadius_class2"],labels=["bckg_MC_cuttedMassRadius","prompt_cuttedRadius","nonprompt_cuttedRadius"],file_name="hist_mlsetsMC_cuttedMassRadius.pdf",severalpages=True)
-    plot_some_dist([allsets["bckg_MC_cuttedMass"],allsets["prompt"],allsets["nonprompt"]],to_plot=vars_shared+["trainBckgMC_cuttedMass_class0","trainBckgMC_cuttedMass_class1","trainBckgMC_cuttedMass_class2"]+["trainBckgMC_cuttedMass_withCt_class0","trainBckgMC_cuttedMass_withCt_class1","trainBckgMC_cuttedMass_withCt_class2"],labels=["bckg_MC_cuttedMass","prompt","nonprompt"],file_name="hist_mlsetsMC_cuttedMass_withCt.pdf",severalpages=True)
+    #plot_some_dist([allsets["bckg_MC_cuttedMass"],allsets["prompt"],allsets["nonprompt"]],to_plot=vars_shared+["trainBckgMC_cuttedMass_class0","trainBckgMC_cuttedMass_class1","trainBckgMC_cuttedMass_class2"]+["trainBckgMC_cuttedMass_withCt_class0","trainBckgMC_cuttedMass_withCt_class1","trainBckgMC_cuttedMass_withCt_class2"],labels=["bckg_MC_cuttedMass","prompt","nonprompt"],file_name="hist_mlsetsMC_cuttedMass_withCt.pdf",severalpages=True)
 
-#for i in (0,1,2):
-#    prep.rename_column(file_name="bckgdata_cuttedRadius_high.root", file_dir=directory_sets, old_column_name=f"trainBckgdata_cutR_class{i}", new_column_name=f"trainBckgdata_cutR_high_class{i}")
-#    prep.rename_column(file_name="bckgMC_cuttedRadius_high.root", file_dir=directory_sets, old_column_name=f"trainBckgMC_cutR_class{i}", new_column_name=f"trainBckgMC_cutR_high_class{i}")
+    #for i in (0,1,2):
+    #    prep.rename_column(file_name="bckgdata_cuttedRadius_high.root", file_dir=directory_sets, old_column_name=f"trainBckgdata_cutR_class{i}", new_column_name=f"trainBckgdata_cutR_high_class{i}")
+    #    prep.rename_column(file_name="bckgMC_cuttedRadius_high.root", file_dir=directory_sets, old_column_name=f"trainBckgMC_cutR_class{i}", new_column_name=f"trainBckgMC_cutR_high_class{i}")
 
-
+ 
+    #values=np.round(np.arange(start=-2,stop=1,step=0.1),2)
+    #scans(vals=values,data=allsets["bckg_MC"], var="trainBckgMC_class0",vars_to_plot=["fMass","fDcaV0PV","fDcaPosPV","fDcaNegPV","fDcaPVProton","fDcaPVPion","fPDGCodeDauNeg","fPDGCodeDauPos","trainBckgMC_class0"])
+    #plot_some_dist([allsets["bckg_MC_low"],allsets["bckg_MC"]],to_plot=["fMass","fDcaV0PV","fDcaPosPV","fDcaNegPV","fDcaPVProton","fDcaPVPion","fPDGCodeDauNeg","fPDGCodeDauPos","trainBckgMC_class0"],labels=["bckg_MC_lowBDT","bckg_MC_full"],severalpages=True)
+    #plot_comb_daughterPDG(data=allsets["bckg_MC_low"], var="fMass")
+    st=prep.cut_data(data=prep.cut_data(allsets["bckg_MC"],var="fPDGCodeDauPos", lower_cut=2212,upper_cut=2212,inclusive=False),var="fPDGCodeDauPos",lower_cut=-13,upper_cut=-13,inclusive=False)
+    plot_some_dist(sets=[st,allsets["bckg_MC"]],to_plot=vars_shared+["trainBckgMC_class0"],labels=["",""],severalpages=True)
 analysis_cutted_subsets()

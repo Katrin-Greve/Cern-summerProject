@@ -14,7 +14,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 import os
 
 
-no_set=3
+no_set=4
 
 directory_sets=f"/home/katrin/Cern_summerProject/root_trees/set_{no_set}/"
 save_dir_plots=f"/home/katrin/Cern_summerProject/ml_plots/set_{no_set}/"
@@ -40,6 +40,13 @@ if no_set==1:
     file_directory_mc="/home/katrin/Cern_summerProject/data/AnalysisResults_treesML.root"
     tree_mc="O2mclambdatableml"
     fname=None
+
+if no_set==4:
+    file_directory_data="/home/katrin/Cern_summerProject/data/AO2D_data_new.root"
+    tree_data="O2lambdatableml"
+    file_directory_mc="/home/katrin/Cern_summerProject/data/A02D_MC_daughters.root"
+    tree_mc="O2mclambdatableml"
+    fname="DF*"
 
 def define_model(features_to_learn:Sequence[str]):
     model_clf = xgb.XGBClassifier()
@@ -83,7 +90,7 @@ def traindata(training_sets:Sequence[TreeHandler], set_names:Sequence[str],featu
 
         train_test_data = train_test_generator(training_sets_equ, [0, 1, 2], test_size=0.5, random_state=42)
 
-    model=define_model()
+    model=define_model(features_to_learn=features_to_learn)
     model.train_test_model(train_test_data, multi_class_opt="ovo")
     for st,name in zip(training_sets,set_names):
         st.apply_model_handler(model_handler=model,column_name=[name_training+"_class0",name_training+"_class1",name_training+"_class2"])
@@ -151,7 +158,8 @@ def get_subsets(already_saved:bool=True):
         names=prep.get_variable_names(allsets,locals())
         prep.save_sets(allsets,set_names=names,dir_tree=directory_sets, tree="tree")
         print("Subsets saved!")
-
+    else:
+        print("Subsets already saved")
     try:
         filenames= os.listdir(directory_sets)
     except Exception as e:
@@ -175,12 +183,20 @@ def get_subsets(already_saved:bool=True):
 #nonprompt_cuttedRadius=prep.cut_data(data=allsets["nonprompt"],var="fRadius",lower_cut=None, upper_cut=20)
 #prep.save_sets(sets=[bckg_MC_cuttedMass,bckg_MC_cuttedMass2,bckg_MC_cuttedRadius, bckg_MC_cuttedMassRadius,prompt_cuttedRadius,nonprompt_cuttedRadius],set_names=["bckg_MC_cuttedMass","bckg_MC_cuttedMass2","bckg_MC_cuttedRadius","bckg_MC_cuttedMassRadius","prompt_cuttedRadius","nonprompt_cuttedRadius"],dir_tree=directory_sets)
 #prep.save_sets([bckg_MC_cuttedMass2],set_names=["bckg_MC_cuttedMass2"],dir_tree=directory_sets)
-allsets=get_subsets(already_saved=True)
+#allsets=get_subsets(already_saved=True)
 
 
 
 #traindata_plotting([allsets["bckg_MC_cuttedRadius"],allsets["nonprompt_cuttedRadius"],allsets["prompt_cuttedRadius"]],set_names=["bckg_MC_cuttedRadius","nonprompt_cuttedRadius", "prompt_cuttedRadius"],name_training="trainBckgMC_cuttedRadius",features_to_learn=["fDcaV0PV","fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion"])
 #traindata_plotting([allsets["bckg_MC_cuttedMassRadius"],allsets["nonprompt_cuttedRadius"],allsets["prompt_cuttedRadius"]],set_names=["bckg_MC_cuttedMassRadius","nonprompt_cuttedRadius", "prompt_cuttedRadius"],name_training="trainBckgMC_cuttedMassRadius",features_to_learn=["fDcaV0PV","fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion"])
-traindata_plotting([allsets["bckg_MC"],allsets["nonprompt"],allsets["prompt"]],set_names=["bckg_MC","nonprompt", "prompt"],name_training="trainBckgMC_withall",features_to_learn=["fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion","fDcaV0PV","fCt", "fRadius","fEta","fTpcNsigmaProton", "fTpcNsigmaPion"])
+#traindata_plotting([allsets["bckg_MC"],allsets["nonprompt"],allsets["prompt"]],set_names=["bckg_MC","nonprompt", "prompt"],name_training="trainBckgMC_withall",features_to_learn=["fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion","fDcaV0PV","fCt", "fRadius","fEta","fTpcNsigmaProton", "fTpcNsigmaPion"])
+
+
+#traindata([allsets["bckg_MC"],allsets["nonprompt"],allsets["prompt"]],set_names=["bckg_MC","nonprompt", "prompt"],name_training="trainBckgMC")
+
+
+allsets=get_subsets(already_saved=True)
+bckg_MC_low=prep.cut_data(allsets["bckg_MC"],var="trainBckgMC_class0", upper_cut=1)
+prep.save_sets([bckg_MC_low],set_names=["bckg_MC_low"],dir_tree=directory_sets)
 
 #traindata_plotting([allsets["bckg_MC_cuttedMass2"],allsets["nonprompt"],allsets["prompt"]],set_names=["bckg_MC_cuttedMass2","nonprompt", "prompt"],name_training="trainBckgMC_cuttedMass2",features_to_learn=["fDcaV0PV","fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion"])
