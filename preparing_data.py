@@ -70,6 +70,7 @@ def get_variable_names(obj_list, namespace):
             result[obj] = names
     return list(result.values())
 
+# Function to rename a column if a root file
 def rename_column(file_name:str,file_dir:str,old_column_name:str, new_column_name:str,tree:str="tree"):
 
     th=TreeHandler(file_name=file_dir+file_name, tree_name=tree)
@@ -208,7 +209,17 @@ def filter_posneg_Pt(data:TreeHandler)->Sequence[TreeHandler]:
     return data_pos, data_neg
 
 def cut_data(data:TreeHandler, var:str, lower_cut:Union[float,None]=None,upper_cut:Union[float,None]=None, inclusive:bool=True)->TreeHandler:
+    '''
+    Parameters:
+        data (TreeHandler): TreeHandler containing the data to be cutted
+        var (str): Column of TreeHandler, for that the cut is applied
+        lower_cut (float): lower cut
+        upper_cut (float): upper cut (if same as lower_cut, only data equal/(! equal) to this specific value is used)
+        inclusive (bool): If True, data inside the cuts is used, if false, data outside the cuts is used. Default to inclusive (True)
 
+    Returns:
+        TreeHandler -> containing the desired subset
+    '''
     if inclusive:
         if upper_cut and lower_cut:
             if upper_cut==lower_cut:
@@ -259,8 +270,15 @@ def proton_pion_division(data:TreeHandler)->TreeHandler:
     tr.set_data_frame(df)
     return tr
 
+# Function to add the generated radius to a TreeHandler, only applicable on MC data
 def add_GenRadius(data:TreeHandler)->TreeHandler:
+    '''
+    Parameter: 
+        data (TreeHanlder)
 
+    Returns: 
+        TreeHandler with an extra column (fGenRadius added
+    '''
     df=data.get_data_frame()
     M=1.11568
     Pt=TreetoArray(data, "fGenPt")
@@ -271,8 +289,15 @@ def add_GenRadius(data:TreeHandler)->TreeHandler:
     tr.set_data_frame(df)
     return tr
 
+# Function to add the calculated radius to a TreeHandler
 def add_Radius(data:TreeHandler)->TreeHandler:
+    '''
+    Parameter: 
+        data (TreeHanlder)
 
+    Returns: 
+        TreeHandler with an extra column (fRadius_calc) added
+    '''
     df=data.get_data_frame()
     M=TreetoArray(data, "fMass")
     Pt=TreetoArray(data, "fPt")
@@ -282,16 +307,6 @@ def add_Radius(data:TreeHandler)->TreeHandler:
     tr=TreeHandler()
     tr.set_data_frame(df)
     return tr
-
-def filter_data(data:TreeHandler, var:Union[str,Sequence[str]], values:Union[float, Sequence[float]], equal:Union[bool,Sequence[bool]]=[True])->TreeHandler:
-
-    for vr,vl, eq in zip(var,values, equal):
-        if eq:
-            data=data.get_subset(f'{vr}=={vl}')
-        else:
-            data=data.get_subset(f'{vr}!={vl}')
-    return data
-
 
 def get_base_sets(file_directory_data:str, tree_data:str, file_directory_mc:str, tree_mc:str, fname:Union[str,None]=None)->Sequence[TreeHandler]:
     '''
@@ -633,6 +648,64 @@ def plot_2dhist_root(file:str, tree_name:str,  var1:str, var2:str, save_name_fil
     hist.Draw("COLZ")  # "COLZ" draws a 2D plot with a color palette
     hist.SetXTitle(var1)
     hist.SetYTitle(var2)
+    ROOT.gPad.SetLogz(1)
+
+    # Save the canvas as an image file if needed
+    canvas.SaveAs(save_name_pdf)
+    canvas.Close()
+    # Create a new ROOT file to save the histogram
+    if os.path.exists(save_name_file):
+        output_file = ROOT.TFile(save_name_file, "UPDATE")
+    else:
+        output_file = ROOT.TFile(save_name_file, "RECREATE")
+    hist.Write()
+    output_file.Close()
+
+
+# Function to draw and save a 3d histogram using ROOT
+def plot_3dhist_root(file:str, tree_name:str,  var1:str, var2:str,var3:str, save_name_file:str, hist_name:str, save_name_pdf:str, title:str ,bins:int=7,cmap=ROOT.kRainbow):
+    """
+    Plot a 2 dimensional histogram using ROOT. Saves the histogram as pdf and as a .root file.
+
+    Parameters:
+        file (str): .root File that contains the desired data for the 2d histogram
+        tree_name (str): name of tree, in which teh data is stored
+        var1 (str): x-data for the histogram, column name of data TreeHandler
+        var2 (str): y-data for the histogram, column name of data TreeHandler
+        var3 (str): z-data for the histogram, column in the TreeHandler
+        save_name_file (str): Name of the .root file that will contain the histogram. If already existing, it will be opened.
+        hist_name (str): Name of the histogram that will be stored in the .root file
+        save_name_pdf (str): Name of the pdf file, that will be saved.
+        title (str): title of the histogram
+        bins (int): no. of bins in the histogram. Default to 7
+        cmap: Cmap, used in the plot. Default to ROOT.kRainbow
+    """
+    file = ROOT.TFile(file, "READ")
+    tree = file.Get(tree_name)
+    hist = ROOT.TH3F(hist_name, title, bins, 0,0, bins, 0,0,bins,0,0)
+
+    tree.Draw(f"{var2}:{var1}:{var3} >> {hist_name}")
+
+    print(f"ok, tree draws {var1}, {var2},{var3}")
+    canvas = ROOT.TCanvas("canvas", "", 1000, 600)
+    canvas.SetRightMargin(0.33)
+    hist.Draw("LEGO")
+    legend = hist.GetListOfFunctions().FindObject("TPaveStats") 
+    if legend:
+        legend.SetX1NDC(0.80)  # Adjust X1 position in normalized coordinates
+        legend.SetX2NDC(0.98)  # Adjust X2 position in normalized coordinates
+        legend.SetY1NDC(0.80)  # Adjust Y1 position in normalized coordinates
+        legend.SetY2NDC(0.95)  # Adjust Y2 position in normalized coordinates
+
+    
+    hist.SetFillStyle(3000)
+    hist.SetFillColor(ROOT.kAzure+6)
+
+    ROOT.gStyle.SetPalette(cmap)
+    hist.Draw("LEGO")  # "COLZ" draws a 2D plot with a color palette
+    hist.SetXTitle(var1)
+    hist.SetYTitle(var2)
+    hist.SetZTitle(var3)
     ROOT.gPad.SetLogz(1)
 
     # Save the canvas as an image file if needed

@@ -40,7 +40,7 @@ if no_set==2:
 if no_set==4:
     file_directory_data="/home/katrin/Cern_summerProject/data/AO2D_data_new.root"
     tree_data="O2lambdatableml"
-    file_directory_mc="/home/katrin/Cern_summerProject/data/A02D_MC_daughters.root"
+    file_directory_mc="/home/katrin/Cern_summerProject/data/AO2D_MC_mothdau.root"
     tree_mc="O2mclambdatableml"
     fname="DF*"
 
@@ -239,7 +239,7 @@ def plot_2dhist_numpy(already_saved:bool=True):
 
 
 
-def plot_2dhist_root(file_names:Sequence[str], set_names:Sequence[str], varsx:Sequence[str], varsy:Sequence[str], pdf_name:str="some_2dhist.pdf", save_dir:str="output.root"):
+def plot_2dhist_root(file_names:Sequence[str], set_names:Sequence[str], varsx:Sequence[str], varsy:Sequence[str], pdf_name:str="some_2dhist.pdf"):
 
     tree="tree"
     dir_result=directory_hists
@@ -258,6 +258,28 @@ def plot_2dhist_root(file_names:Sequence[str], set_names:Sequence[str], varsx:Se
             pdflist.append(dir_result+f"{hname}.pdf")
 
     prep.merge_pdfs(pdf_list=pdflist,output_path=dir_result+pdf_name)
+
+
+def plot_3dhist_root(file_names:Sequence[str], set_names:Sequence[str], varsx:Sequence[str], varsy:Sequence[str],varsz:Sequence[str], pdf_name:str="some_2dhist.pdf"):
+
+    tree="tree"
+    dir_result=directory_hists
+    bins=100
+    l1=varsx
+    l2=varsy
+    l3=varsz
+    pdflist=[]
+
+    for fname,sname in zip(file_names,set_names):
+        save_dir=dir_result+sname+".root"
+        for tu in list(itertools.product(l1, l2,l3)):
+            print(tu)
+            hname=f"{sname}_{tu[0]}_{tu[1]}_{tu[2]}"
+            prep.plot_3dhist_root(file=fname, tree_name=tree, var1=tu[0], var2=tu[1], var3=tu[2], save_name_file=save_dir, hist_name=hname, save_name_pdf=dir_result+f"{hname}.pdf",title=f"{sname}: {tu[0]} {tu[1]} {tu[2]}",bins=bins)
+            pdflist.append(dir_result+f"{hname}.pdf")
+
+    prep.merge_pdfs(pdf_list=pdflist,output_path=dir_result+pdf_name)
+
 
 def scans(vals:Sequence[float],data:TreeHandler,var:str,vars_to_plot:Sequence[str], uppercuts:bool=True,base:float=None,filename:str="output_scan.pdf"):
     pdfs=[]
@@ -304,10 +326,18 @@ def plot_comb_daughterPDG(var:Sequence[str],data:TreeHandler):
 
 def analysis_cutted_subsets(already_saved:bool=True):
 
+    #bckg_MC=prep.cut_data(data=TreeHandler(file_name=file_directory_mc,tree_name=tree_mc,folder_name=fname),var="fPDGCode",lower_cut=-999, upper_cut=-999)
+    #prompt=prep.get_prompt(file_directory_mc=file_directory_mc,tree_mc=tree_mc,folder_name=fname)
+    #nonprompt=prep.get_nonprompt(file_directory_mc=file_directory_mc,tree_mc=tree_mc,folder_name=fname)
+    #prep.save_sets([bckg_MC,prompt,nonprompt],set_names=["bckg_MC","prompt","nonprompt"],dir_tree=directory_sets)
+
+
     allsets=get_sets(already_saved=already_saved)
     sets=list(allsets.values())
     set_names=list(allsets.keys())
 
+    #matter, antimatter=prep.filter_posneg_Pt(data=allsets["bckg_MC"])
+    #prep.save_sets(sets=[matter,antimatter],set_names=["matter_bckg_MC", "antimatter_bckg_MC"],dir_tree=directory_sets)
 
     files={}
     for nm in set_names:
@@ -335,6 +365,16 @@ def analysis_cutted_subsets(already_saved:bool=True):
     #scans(vals=values,data=allsets["bckg_MC"], var="trainBckgMC_class0",vars_to_plot=["fMass","fDcaV0PV","fDcaPosPV","fDcaNegPV","fDcaPVProton","fDcaPVPion","fPDGCodeDauNeg","fPDGCodeDauPos","trainBckgMC_class0"])
     #plot_some_dist([allsets["bckg_MC_low"],allsets["bckg_MC"]],to_plot=["fMass","fDcaV0PV","fDcaPosPV","fDcaNegPV","fDcaPVProton","fDcaPVPion","fPDGCodeDauNeg","fPDGCodeDauPos","trainBckgMC_class0"],labels=["bckg_MC_lowBDT","bckg_MC_full"],severalpages=True)
     #plot_comb_daughterPDG(data=allsets["bckg_MC_low"], var="fMass")
-    st=prep.cut_data(data=prep.cut_data(allsets["bckg_MC"],var="fPDGCodeDauPos", lower_cut=2212,upper_cut=2212,inclusive=False),var="fPDGCodeDauPos",lower_cut=-13,upper_cut=-13,inclusive=False)
-    plot_some_dist(sets=[st,allsets["bckg_MC"]],to_plot=vars_shared+["trainBckgMC_class0"],labels=["",""],severalpages=True)
+    #st=prep.cut_data(data=prep.cut_data(allsets["bckg_MC"],var="fPDGCodeDauPos", lower_cut=2212,upper_cut=2212,inclusive=False),var="fPDGCodeDauPos",lower_cut=-13,upper_cut=-13,inclusive=False)
+    #plot_some_dist(sets=[st,allsets["bckg_MC"]],to_plot=vars_shared+["trainBckgMC_class0"],labels=["",""],severalpages=True)
+    #plot_2dhist_root(file_names=[files["bckg_MC"],files["prompt"]], set_names=["bckg_MC","prompt"],varsx=["fPDGCodeMotherDauNeg"],varsy=["fPDGCodeMotherDauPos"])
+
+    #plot_some_dist(sets=[allsets["matter_bckg_MC"],allsets["antimatter_bckg_MC"]], labels=["matter bckg MC", "antimatter bckg MC"],to_plot=list(allsets["matter_bckg_MC"].get_var_names()),file_name="dist_bckg_MC_matter.pdf")
+    #plot_some_corr(sets=[allsets["matter_bckg_MC"],allsets["antimatter_bckg_MC"]], labels=["matter bckg MC", "antimatter bckg MC"],to_plot=list(allsets["matter_bckg_MC"].get_var_names()),file_name="corr_bckg_MC_matter.pdf")
+
+    for name in ["matter_bckg_MC", "antimatter_bckg_MC"]:
+        #plot_2dhist_root(file_names=[files[name]], set_names=[name],varsx=["fPDGCodeMotherDauNeg"],varsy=["fPDGCodeMotherDauPos"])
+        #plot_2dhist_root(file_names=[files[name]], set_names=[name],varsx=["fPDGCodeMotherDauNeg","fPDGCodeMotherDauPos"],varsy=["fMass"])
+        plot_3dhist_root(file_names=[files[name]], set_names=[name],varsx=["fPDGCodeMotherDauNeg"],varsy=["fPDGCodeMotherDauPos"],varsz=["fMass"],pdf_name="3d_hist.pdf")
+
 analysis_cutted_subsets()
