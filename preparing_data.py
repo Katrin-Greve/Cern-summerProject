@@ -607,7 +607,7 @@ def plot_2dhist_numpy(data:TreeHandler, var1:str, var2:str,ax, bin:int=100, cmap
 
 
 # Function to draw and save a 2d histogram using ROOT
-def plot_2dhist_root(file:str, tree_name:str,  var1:str, var2:str, save_name_file:str, hist_name:str, save_name_pdf:str, title:str ,bins:int=7,cmap=ROOT.kRainbow):
+def plot_2dhist_root(file:str, tree_name:str,  var1:str, var2:str, save_name_file:str, hist_name:str, save_name_pdf:str, title:str ,bins:int=7,cmap=ROOT.kRainbow,folders:bool=False):
     """
     Plot a 2 dimensional histogram using ROOT. Saves the histogram as pdf and as a .root file.
 
@@ -623,11 +623,22 @@ def plot_2dhist_root(file:str, tree_name:str,  var1:str, var2:str, save_name_fil
         bins (int): no. of bins in the histogram. Default to 7
         cmap: Cmap, used in the plot. Default to ROOT.kRainbow
     """
-    file = ROOT.TFile(file, "READ")
-    tree = file.Get(tree_name)
-    hist = ROOT.TH2F(hist_name, title, bins, 0,0, bins, 0,0)
+    root_file = ROOT.TFile(file, "READ")
 
-    tree.Draw(f"{var2}:{var1} >> {hist_name}")
+    if not folders:
+        hist = ROOT.TH2F(hist_name, title, bins, 1,100, bins, 0,1)
+        tree = root_file.Get(tree_name)
+        tree.Draw(f"{var2}:{var1} >> {hist_name}")
+    else: 
+        hist = ROOT.TH2F(hist_name, title, bins - 1, 0,0, bins-1, 0,0)
+        all_trees = find_trees(root_file)
+        for tree_name in all_trees:
+            hist_name = "temp_hist_{tree_name}"
+            hist_help = ROOT.TH2F(hist_name, "", bins - 1,0,0, bins-1,0,0)
+            print(tree_name)
+            tree = root_file.Get(tree_name)
+            tree.Draw(f"{var2}:{var1} >> {hist_name}")
+            hist.Add(hist_help)      
 
     print(f"ok, tree draws {var1}, {var2}")
     canvas = ROOT.TCanvas("canvas", "", 1000, 600)
@@ -663,7 +674,7 @@ def plot_2dhist_root(file:str, tree_name:str,  var1:str, var2:str, save_name_fil
 
 
 # Function to draw and save a 3d histogram using ROOT
-def plot_3dhist_root(file:str, tree_name:str,  var1:str, var2:str,var3:str, save_name_file:str, hist_name:str, save_name_pdf:str, title:str ,bins:int=7,cmap=ROOT.kRainbow):
+def plot_3dhist_root(file:str, tree_name:str,  var1:str, var2:str,var3:str, save_name_file:str, hist_name:str, save_name_pdf:str, title:str ,binsx:int=100, binsy:int=100, binsz:int=100,cmap=ROOT.kRainbow):
     """
     Plot a 2 dimensional histogram using ROOT. Saves the histogram as pdf and as a .root file.
 
@@ -682,9 +693,9 @@ def plot_3dhist_root(file:str, tree_name:str,  var1:str, var2:str,var3:str, save
     """
     file = ROOT.TFile(file, "READ")
     tree = file.Get(tree_name)
-    hist = ROOT.TH3F(hist_name, title, bins, 0,0, bins, 0,0,bins,0,0)
+    hist = ROOT.TH3F(hist_name, title, binsx, 0,0, binsy, 0,0,binsz,0,0)
 
-    tree.Draw(f"{var2}:{var1}:{var3} >> {hist_name}")
+    tree.Draw(f"{var3}:{var2}:{var1} >> {hist_name}")
 
     print(f"ok, tree draws {var1}, {var2},{var3}")
     canvas = ROOT.TCanvas("canvas", "", 1000, 600)
@@ -779,4 +790,13 @@ def merge_pdfs(pdf_list:Sequence[str], output_path:str):
         os.remove(pdf)
 
 
-    
+def find_trees(directory, path=""):
+    trees = []
+    keys = directory.GetListOfKeys()
+    for key in keys:
+        item = key.ReadObj()
+        if item.InheritsFrom("TTree"):
+            trees.append(f"{path}/{key.GetName()}".lstrip('/'))
+        elif item.InheritsFrom("TDirectory"):
+            trees.extend(find_trees(item, f"{path}/{key.GetName()}"))
+    return trees
