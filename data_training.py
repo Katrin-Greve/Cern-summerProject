@@ -44,7 +44,7 @@ if no_set==1:
 if no_set==4:
     file_directory_data="/home/katrin/Cern_summerProject/data/AO2D_data_new.root"
     tree_data="O2lambdatableml"
-    file_directory_mc="/home/katrin/Cern_summerProject/data/A02D_MC_daughters.root"
+    file_directory_mc="/home/katrin/Cern_summerProject/data/A02D_MC_mothdau.root"
     tree_mc="O2mclambdatableml"
     fname="DF*"
 
@@ -196,7 +196,5 @@ def get_subsets(already_saved:bool=True):
 
 
 allsets=get_subsets(already_saved=True)
-bckg_MC_low=prep.cut_data(allsets["bckg_MC"],var="trainBckgMC_class0", upper_cut=1)
-prep.save_sets([bckg_MC_low],set_names=["bckg_MC_low"],dir_tree=directory_sets)
-
-#traindata_plotting([allsets["bckg_MC_cuttedMass2"],allsets["nonprompt"],allsets["prompt"]],set_names=["bckg_MC_cuttedMass2","nonprompt", "prompt"],name_training="trainBckgMC_cuttedMass2",features_to_learn=["fDcaV0PV","fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion"])
+traindata_plotting([allsets["bckg_MC"],allsets["nonprompt"],allsets["prompt"]],set_names=["bckg_MC","nonprompt", "prompt"],name_training="trainBckgMC",features_to_learn=["fDcaV0PV","fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion","fCt"])
+traindata_plotting([allsets["bckg_MC_filtered"],allsets["nonprompt"],allsets["prompt"]],set_names=["bckg_MC_filtered","nonprompt", "prompt"],name_training="trainBckgMC_filtered",features_to_learn=["fDcaV0PV","fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion","fCt"])

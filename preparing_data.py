@@ -11,6 +11,7 @@ import awkward as ak
 import PyPDF2
 import os
 import seaborn as sns
+from ROOT import RooFit, RooRealVar, RooDataSet, RooArgList, RooArgusBG, RooGaussian, RooAddPdf, RooPlot, RooArgSet
 
 ###################################################
 ### Convert TreeHandler, Arrays and .root Files ###
@@ -626,16 +627,16 @@ def plot_2dhist_root(file:str, tree_name:str,  var1:str, var2:str, save_name_fil
     root_file = ROOT.TFile(file, "READ")
 
     if not folders:
-        hist = ROOT.TH2F(hist_name, title, bins, 1,100, bins, 0,1)
+        hist = ROOT.TH2F(hist_name, title, bins, 0,0, bins, 0,0)
         tree = root_file.Get(tree_name)
         tree.Draw(f"{var2}:{var1} >> {hist_name}")
     else: 
-        hist = ROOT.TH2F(hist_name, title, bins - 1, 0,0, bins-1, 0,0)
+        hist = ROOT.TH2F(hist_name, title, bins , 0,0, bins, 0,0)
         all_trees = find_trees(root_file)
         for tree_name in all_trees:
             hist_name = "temp_hist_{tree_name}"
-            hist_help = ROOT.TH2F(hist_name, "", bins - 1,0,0, bins-1,0,0)
-            print(tree_name)
+            hist_help = ROOT.TH2F(hist_name, "", bins ,0,0, bins,0,0)
+            #print(tree_name)
             tree = root_file.Get(tree_name)
             tree.Draw(f"{var2}:{var1} >> {hist_name}")
             hist.Add(hist_help)      
@@ -672,9 +673,35 @@ def plot_2dhist_root(file:str, tree_name:str,  var1:str, var2:str, save_name_fil
     hist.Write()
     output_file.Close()
 
+def add_projection(file_name:str, hist_name:str, save_name_pdf:str, axis:int=0):
+
+    file = ROOT.TFile.Open(file_name)
+    h2 = file.Get(hist_name)
+    if axis==0:
+        h1 = h2.ProjectionX()
+    if axis==1:
+        h1 = h2.ProjectionY()
+    print(f"ok, projection done!")
+    canvas = ROOT.TCanvas("canvas", "", 1000, 600)
+    canvas.SetRightMargin(0.33)
+    h1.Draw()
+    legend = h1.GetListOfFunctions().FindObject("TPaveStats") 
+    if legend:
+        legend.SetX1NDC(0.80)  # Adjust X1 position in normalized coordinates
+        legend.SetX2NDC(0.98)  # Adjust X2 position in normalized coordinates
+        legend.SetY1NDC(0.80)  # Adjust Y1 position in normalized coordinates
+        legend.SetY2NDC(0.95)  # Adjust Y2 position in normalized coordinates
+    h1.SetFillStyle(3000)
+    h1.SetFillColor(ROOT.kAzure+6)
+    canvas.SaveAs(save_name_pdf)
+    canvas.Close()
+    output_file = ROOT.TFile(file_name, "UPDATE")
+    h1.Write()
+    output_file.Close()
+
 
 # Function to draw and save a 3d histogram using ROOT
-def plot_3dhist_root(file:str, tree_name:str,  var1:str, var2:str,var3:str, save_name_file:str, hist_name:str, save_name_pdf:str, title:str ,binsx:int=100, binsy:int=100, binsz:int=100,cmap=ROOT.kRainbow):
+def plot_3dhist_root(file:str, tree_name:str,  var1:str, var2:str,var3:str, save_name_file:str, hist_name:str, save_name_pdf:str, title:str ,binsx:int=100, binsy:int=100, binsz:int=100,cmap=ROOT.kRainbow,folders:bool=False):
     """
     Plot a 2 dimensional histogram using ROOT. Saves the histogram as pdf and as a .root file.
 
@@ -691,11 +718,26 @@ def plot_3dhist_root(file:str, tree_name:str,  var1:str, var2:str,var3:str, save
         bins (int): no. of bins in the histogram. Default to 7
         cmap: Cmap, used in the plot. Default to ROOT.kRainbow
     """
-    file = ROOT.TFile(file, "READ")
-    tree = file.Get(tree_name)
-    hist = ROOT.TH3F(hist_name, title, binsx, 0,0, binsy, 0,0,binsz,0,0)
+    root_file = ROOT.TFile(file, "READ")
+    #tree = file.Get(tree_name)
+    #hist = ROOT.TH3F(hist_name, title, binsx, 0,0, binsy, 0,0,binsz,0,0)
 
-    tree.Draw(f"{var3}:{var2}:{var1} >> {hist_name}")
+    #tree.Draw(f"{var3}:{var2}:{var1} >> {hist_name}")
+
+    if not folders:
+        hist = ROOT.TH3F(hist_name, title, binsx, 0,0, binsy, 0,0, binsz,0,0)
+        tree = root_file.Get(tree_name)
+        tree.Draw(f"{var3}:{var2}:{var1} >> {hist_name}")
+    else: 
+        hist = ROOT.TH3F(hist_name, title, binsx, 0,0, binsy, 0,0, binsz,0,0)
+        all_trees = find_trees(root_file)
+        for tree_name in all_trees:
+            hist_name = "temp_hist_{tree_name}"
+            hist_help = ROOT.TH3F(hist_name, "",binsx, 0,0, binsy, 0,0, binsz,0,0)
+            #print(tree_name)
+            tree = root_file.Get(tree_name)
+            tree.Draw(f"{var3}:{var2}:{var1} >> {hist_name}")
+            hist.Add(hist_help)     
 
     print(f"ok, tree draws {var1}, {var2},{var3}")
     canvas = ROOT.TCanvas("canvas", "", 1000, 600)
@@ -800,3 +842,65 @@ def find_trees(directory, path=""):
         elif item.InheritsFrom("TDirectory"):
             trees.extend(find_trees(item, f"{path}/{key.GetName()}"))
     return trees
+
+
+def fit_chrystalball(file_name:str,tree_name:str,save_name_file:str,save_name_pdf:Union[str,None]=None,var:str="fMass",x_min:float=1.05,x_max:float=1.35,folders:bool=None):
+
+    # Create a ROOT application
+    ROOT.gROOT.SetBatch(True)
+    root_file = ROOT.TFile(file_name)
+
+    x = RooRealVar(var, var, x_min, x_max)
+
+    print("min, max value: ", x_min, x_max)       
+
+    if not folders:
+        tree = root_file.Get(tree_name)
+        varset = ROOT.RooArgSet()
+        varset.add(x)
+        data = RooDataSet("dataset_name", "dataset_title", tree, varset)
+    else: 
+        all_trees = find_trees(root_file)
+        i=0
+        for tree_name in all_trees:
+            tree = root_file.Get(tree_name)
+            varset = ROOT.RooArgSet()
+            varset.add(x)
+            if i==0:
+                data = RooDataSet("temp_data", "temporary dataset", tree, varset)
+            else:
+                temp_data = RooDataSet("temp_data", "temporary dataset", tree, varset)
+                data.append(temp_data)
+
+    mean = RooRealVar("mean", "mean of gaussian", 1.116, 1.1, 1.2)
+    sigma = RooRealVar("sigmaLR", "width of gaussian", 0.001, 0.00001, 0.01)
+    alphaL = RooRealVar("alphaL", "alphaL", 1.5, 0.01, 10)
+    nL = RooRealVar("nL", "nR", 2, 0.01, 10)
+    alphaR = RooRealVar("alphaR", "alphaR", 1.5, 0.01, 10)
+    nR = RooRealVar("nR", "nR", 2, 0.01, 10)
+    # Define the Crystal Ball function
+    crystal_ball = ROOT.RooCrystalBall("crystal_ball", "Crystal Ball PDF", x, mean, sigma, alphaL, nL,alphaR, nR)
+
+    # Perform the fit
+    crystal_ball.fitTo(data)
+
+    # Plot the results
+    xframe = x.frame(RooFit.Title("Crystal Ball Fit Example"))
+    data.plotOn(xframe)
+    crystal_ball.plotOn(xframe)
+
+    # Draw the plot on a canvas
+    canvas = ROOT.TCanvas("canvas", "Crystal Ball Fit", 800, 600)
+    canvas.SetRightMargin(0.33)
+    ROOT.gPad.SetLogy(1)
+    xframe.Draw()
+
+    if save_name_pdf:
+        canvas.SaveAs(save_name_pdf)
+
+    if os.path.exists(save_name_file):
+        output_file = ROOT.TFile(save_name_file, "UPDATE")
+    else:
+        output_file = ROOT.TFile(save_name_file, "RECREATE")
+    xframe.Write()
+    output_file.Close()

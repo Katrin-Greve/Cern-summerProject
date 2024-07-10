@@ -5,6 +5,9 @@
 #include "TFile.h"
 #include <iostream>
 #include <vector>
+#include "TTree.h"
+#include "TText.h"
+#include "TLatex.h"
 
 void simulate_K0s_decay() {
     // Define the masses
