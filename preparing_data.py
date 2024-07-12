@@ -11,7 +11,7 @@ import awkward as ak
 import PyPDF2
 import os
 import seaborn as sns
-from ROOT import RooFit, RooRealVar, RooDataSet, RooArgList, RooArgusBG, RooGaussian, RooAddPdf, RooPlot, RooArgSet
+from ROOT import RooFit, RooRealVar, RooDataSet, RooArgList, RooAddPdf, RooPlot, RooArgList, RooPolynomial, RooDataHist, RooHist
 
 ###################################################
 ### Convert TreeHandler, Arrays and .root Files ###
@@ -844,57 +844,251 @@ def find_trees(directory, path=""):
     return trees
 
 
-def fit_chrystalball(file_name:str,tree_name:str,save_name_file:str,save_name_pdf:Union[str,None]=None,var:str="fMass",x_min:float=1.05,x_max:float=1.35,folders:bool=None):
+def fit_chrystalball(file_name:str,tree_name:str,save_name_file:str,save_name_pdf:Union[str,None]=None,hist_given:Union[ROOT.TH1F,None]=None, var:str="fMass",save_file:bool=True,x_min_fit:float=1.086,x_max_fit:float=1.14,x_min_data:float=1.05,x_max_data:float=1.16,no_bins:int=250,title:str="crystalball+background fit",cheb:bool=False, logy:bool=True,n_sig:float=4):
 
     # Create a ROOT application
     ROOT.gROOT.SetBatch(True)
+    
+    if not hist_given:
+        root_file = ROOT.TFile(file_name)    
+        hist = ROOT.TH1F("hist", "Data", no_bins, 0,0)  # Adjust binning and range as necessary      
+    x = RooRealVar(var, var, x_min_fit, x_max_fit)
+
+    fit_range = ROOT.RooFit.Range(x_min_fit, x_max_fit)
+    print("min, max value for fitting: ", x_min_fit, x_max_fit)       
+
+    i=0
+    if not hist_given:
+        all_trees = find_trees(root_file)
+        for tree_name in all_trees:
+            tree = root_file.Get(tree_name)
+            cut = "fCosPA > 0.999 && fMass > 1.085 && fMass < 1.140"
+            temp_tree = tree.CopyTree(cut)
+            temp_tree.Draw(f"{var}>>hist")
+            if i==0:
+                data = RooDataHist("data_hist", "RooDataHist from TH1", RooArgList(x), hist)
+            else:
+                temp_data =  RooDataHist("data_hist", "RooDataHist from TH1",RooArgList(x), hist)
+                data.append(temp_data)
+
+    else:
+        data = RooDataHist("data_hist", "RooDataHist from TH1", RooArgList(x), hist_given)
+
+    mean = RooRealVar("mean", "mean of gaussian", 1.1155, 1.115, 1.116)
+    sigma = RooRealVar("sigmaLR", "width of gaussian", 0.001, 0.00001, 0.01)
+    alphaL = RooRealVar("alphaL", "alphaL", 1.38, 0.01, 10)
+    nL = RooRealVar("nL", "nL", 7.7, 0.01, 10)
+    alphaR = RooRealVar("alphaR", "alphaR", 1.4, 0.01, 10)
+    nR = RooRealVar("nR", "nR", 10, 0.01, 10)
+    # Define the Crystal Ball function
+    crystal_ball = ROOT.RooCrystalBall("crystal_ball", "Crystal Ball PDF", x, mean, sigma, alphaL, nL,alphaR, nR)
+    
+    if not cheb:   
+        p0 = RooRealVar("p0", "coefficient of constant term", -1.115,-10000,10000)
+        p1 = RooRealVar("p1", "coefficient of linear term", 1.23,-10000,10000)
+    else:
+        p0 = RooRealVar("p0", "coefficient of constant term", -0.115,-10000,10000)
+        p1 = RooRealVar("p1", "coefficient of linear term", -0.158,-10000,10000)        
+    #p2 = RooRealVar("p2", "coefficient of quadratic term", -0.1,-100,0)
+    quadratic = ROOT.RooPolynomial("quadratic", "Quadratic function", x, RooArgList(p0,p1))
+    chebychev = ROOT.RooChebychev("chebychev", "chebychev polynomial",x, RooArgList(p0,p1))
+    # Combine the Crystal Ball function and the quadratic function
+    frac = RooRealVar("frac", "fraction", 0.5, 0, 1)
+    #norm = RooRealVar("norm", "norm", )
+    if not cheb:
+        model = RooAddPdf("model", "Crystal Ball + Quadratic", RooArgList(crystal_ball, quadratic), RooArgList(frac))
+    else:
+        model = RooAddPdf("model", "Crystal Ball + Chebychev", RooArgList(crystal_ball, chebychev), RooArgList(frac))
+
+    # Perform the fit
+    result=model.fitTo(data, fit_range, RooFit.Save())
+    chi2 = model.createChi2(data).getVal()
+
+    mean_val = result.floatParsFinal().find("mean")
+    sigma_val = result.floatParsFinal().find("sigmaLR")
+  
+    x.setRange("integrationRange", mean_val.getVal()-n_sig*sigma_val.getVal(), mean_val.getVal()+n_sig*sigma_val.getVal())
+
+    # Integrate the functions over the range
+    integral1 = crystal_ball.createIntegral(ROOT.RooArgSet(x), RooFit.Range("integrationRange"))
+    integral2 = model.createIntegral(ROOT.RooArgSet(x), RooFit.Range("integrationRange"))
+
+    # Get the numerical values of the integrals
+    integral1_val = integral1.getVal()
+    integral2_val = integral2.getVal()
+
+    # Step 4: Calculate the purity (ratio of the integrals)
+    purity = integral1_val / integral2_val
+
+    # Plot the results
+    xframe = x.frame(RooFit.Title(title))
+    data.plotOn(xframe)
+    model.plotOn(xframe, RooFit.LineColor(ROOT.kBlue))
+    model.plotOn(xframe,   RooFit.Components("crystal_ball"), RooFit.LineStyle(ROOT.kDashed), RooFit.LineColor(ROOT.kRed))
+    if not cheb:
+        model.plotOn(xframe,  RooFit.Components("quadratic"), RooFit.LineStyle(ROOT.kDotted), RooFit.LineColor(ROOT.kGreen))
+    else:
+        model.plotOn(xframe, RooFit.Components("chebychev"), RooFit.LineStyle(ROOT.kDotted), RooFit.LineColor(ROOT.kGreen))
+
+    
+    line1 = ROOT.TLine(mean_val.getVal()+n_sig*sigma_val.getVal(), xframe.GetMinimum(), mean_val.getVal()+n_sig*sigma_val.getVal(), xframe.GetMaximum())
+    line1.SetLineColor(ROOT.kBlack)
+    line1.SetLineWidth(2)
+    xframe.addObject(line1)
+    line2 = ROOT.TLine(mean_val.getVal()-n_sig*sigma_val.getVal(), xframe.GetMinimum(), mean_val.getVal()-n_sig*sigma_val.getVal(), xframe.GetMaximum())
+    line2.SetLineColor(ROOT.kBlack)
+    line2.SetLineWidth(2)
+    xframe.addObject(line2)
+
+    legend = ROOT.TLegend(0.7, 0.7, 0.95, 0.9)  # (x1, y1, x2, y2) coordinates in normalized canvas units
+    legend.SetHeader("Legend")  # Optional legend title
+    legend.AddEntry(xframe.findObject("data_hist"), "Data", "p")  # Add data to legend
+    legend.AddEntry(xframe.findObject("model"), "Model", "l")
+    legend.AddEntry(xframe.findObject("crystal_ball"), "Crystal Ball", "l")
+    if not cheb:
+        legend.AddEntry(xframe.findObject("quadratic"), "Quadratic", "l")
+    else:
+        legend.AddEntry(xframe.findObject("chebychev"), "Chebychev", "l")
+    # Match legend entries with their respective line styles and colors
+    legend.GetListOfPrimitives().At(1).SetMarkerStyle(ROOT.kFullCircle)  # Data marker style
+    legend.GetListOfPrimitives().At(2).SetLineColor(ROOT.kBlue)  # Model line color
+    legend.GetListOfPrimitives().At(3).SetLineColor(ROOT.kRed)    # Crystal Ball line color
+    legend.GetListOfPrimitives().At(3).SetLineStyle(ROOT.kDashed)  # Crystal Ball line style
+    legend.GetListOfPrimitives().At(4).SetLineColor(ROOT.kGreen)  # Quadratic line color
+    legend.GetListOfPrimitives().At(4).SetLineStyle(ROOT.kDotted)  # Quadratic line style
+
+    notes = ROOT.TPaveText(0.7, 0.05, 0.95, 0.65, "NDC")  # (x1, y1, x2, y2) in normalized canvas units
+    notes.AddText("Fit parameter:")
+    #print("Fit parameters:")
+    pdf_list = model.pdfList()
+    for pdf_index in range(pdf_list.getSize()):
+        notes.AddText("\n")
+        pdf = pdf_list.at(pdf_index)
+        notes.AddText(f"{pdf.GetName()}:")
+        params = pdf.getParameters(data)     
+        iterator = params.createIterator()
+        param = iterator.Next()
+        while param:
+            notes.AddText(f"{param.GetName()}: {param.getVal():.4f} \pm {param.getError():.4f}")
+            param = iterator.Next()
+
+    notes.AddText("\n")
+    notes.AddText(f"Chi2: {chi2:.5f}")
+    notes.AddText("\n")
+    notes.AddText(f"Chi2/bin: {chi2/no_bins:.5f}")
+    notes.AddText("\n")
+    notes.AddText(f"Purity in {n_sig}-sig.:")
+    notes.AddText(f"={integral1_val:.3f} / {integral2_val:.3f}")
+    notes.AddText(f"={purity:.3f}")
+
+    notes.SetTextAlign(12)  # 12 means left alignment and top vertical alignment
+    notes.SetTextSize(0.03)  # Adjust the text size as needed
+    notes.SetTextFont(42)
+
+    notes.GetLineWith("Fit").SetTextFont(62)
+    notes.GetLineWith("crys").SetTextFont(62)
+    if not cheb:
+        notes.GetLineWith("qua").SetTextFont(62)
+    else:
+        notes.GetLineWith("cheb").SetTextFont(62)
+    notes.GetLineWith("Pur").SetTextFont(62)
+    notes.GetLineWith("Chi2:").SetTextFont(62)
+
+
+    canvas = ROOT.TCanvas("canvas", "Crystal Ball Fit", 800, 600)
+    canvas.SetRightMargin(0.33)
+    if logy:
+        ROOT.gPad.SetLogy(1)
+    xframe.Draw()
+    legend.Draw()
+    notes.Draw()
+
+    if save_name_pdf:
+        canvas.SaveAs(save_name_pdf)
+    
+    if save_file:
+        if os.path.exists(save_name_file):
+            output_file = ROOT.TFile(save_name_file, "UPDATE")
+        else:
+            output_file = ROOT.TFile(save_name_file, "RECREATE")
+        xframe.Write()
+        output_file.Close()
+
+
+def crystalball_plus_quadratic(x, params):
+    # Crystal Ball parameters
+    alpha_l = params[0]  # Alpha for the left side
+    n_l = params[1]      # n for the left side
+    alpha_r = params[2]  # Alpha for the right side
+    n_r = params[3]      # n for the right side
+    mu = params[4]       # Mean
+    sigma = params[5]    # Standard deviation
+    norm_cb = params[6]
+
+    # Quadratic background parameters
+    a = params[7]
+    b = params[8]
+    c = params[9]
+
+    # Crystal Ball function
+    t = (x[0] - mu) / sigma
+
+    if t < -alpha_l:
+        a_l = ROOT.TMath.Power(n_l / abs(alpha_l), n_l) * ROOT.TMath.Exp(-0.5 * alpha_l * alpha_l)
+        b_l = n_l / abs(alpha_l) - abs(alpha_l)
+        cb= norm_cb * a_l / ROOT.TMath.Power(b_l - t, n_l)
+    elif t > alpha_r:
+        a_r = ROOT.TMath.Power(n_r / abs(alpha_r), n_r) * ROOT.TMath.Exp(-0.5 * alpha_r * alpha_r)
+        b_r = n_r / abs(alpha_r) - abs(alpha_r)
+        cb= norm_cb * a_r / ROOT.TMath.Power(b_r + t, n_r)
+    else:
+        cb=norm_cb * ROOT.TMath.Exp(-0.5 * t * t)
+    
+    # Quadratic background function
+    quad = a * x[0]**2 + b * x[0] + c
+
+    return cb + quad
+
+
+
+def fit_chrystalball_manuel(file_name:str,tree_name:str,save_name_file:str,save_name_pdf:Union[str,None]=None,var:str="fMass",x_min:float=1.05,x_max:float=1.35,folders:bool=None):
+
     root_file = ROOT.TFile(file_name)
-
-    x = RooRealVar(var, var, x_min, x_max)
-
-    print("min, max value: ", x_min, x_max)       
+    canvas = ROOT.TCanvas("canvas", "Fit Canvas", 800, 600)
+    canvas.SetRightMargin(0.33)
+    ROOT.gPad.SetLogy(1)
+    hist = ROOT.TH1F("hist", "Data", 100, 1.06, 1.16)  # Adjust binning and range as necessary      
 
     if not folders:
         tree = root_file.Get(tree_name)
-        varset = ROOT.RooArgSet()
-        varset.add(x)
-        data = RooDataSet("dataset_name", "dataset_title", tree, varset)
+        #cut = "fCosPA > 0.999"
+        cut = "fCosPA > 0.999 && fMass > 1.085 && fMass < 1.140"
+        temp_tree = tree.CopyTree(cut)
+        temp_tree.Draw(f"{var}>>hist")
     else: 
         all_trees = find_trees(root_file)
         i=0
         for tree_name in all_trees:
             tree = root_file.Get(tree_name)
-            varset = ROOT.RooArgSet()
-            varset.add(x)
-            if i==0:
-                data = RooDataSet("temp_data", "temporary dataset", tree, varset)
-            else:
-                temp_data = RooDataSet("temp_data", "temporary dataset", tree, varset)
-                data.append(temp_data)
+            #cut = "fCosPA > 0.999"
+            cut = "fCosPA > 0.999 && fMass > 1.085 && fMass < 1.140"
+            temp_tree = tree.CopyTree(cut)
+            temp_tree.Draw(f"{var}>>hist")
 
-    mean = RooRealVar("mean", "mean of gaussian", 1.116, 1.1, 1.2)
-    sigma = RooRealVar("sigmaLR", "width of gaussian", 0.001, 0.00001, 0.01)
-    alphaL = RooRealVar("alphaL", "alphaL", 1.5, 0.01, 10)
-    nL = RooRealVar("nL", "nR", 2, 0.01, 10)
-    alphaR = RooRealVar("alphaR", "alphaR", 1.5, 0.01, 10)
-    nR = RooRealVar("nR", "nR", 2, 0.01, 10)
-    # Define the Crystal Ball function
-    crystal_ball = ROOT.RooCrystalBall("crystal_ball", "Crystal Ball PDF", x, mean, sigma, alphaL, nL,alphaR, nR)
+    n_params = 10
+    combined_function = ROOT.TF1("combined_function", crystalball_plus_quadratic, 1.085, 1.14, n_params)
+    combined_function.SetParameters(2, 1.5, 2, 1.2, 1.1155, 0.002, 400000, -1.0, 5.0, 1000.0)
+    combined_function.SetParNames("alpha_l", "n_l","alpha_r", "n_r", "mu", "sigma", "norm_cb", "a", "b", "c")
 
-    # Perform the fit
-    crystal_ball.fitTo(data)
+    hist.Fit(combined_function, "R")
+    combined_function.Draw("SAME")
+    #consfunc.Draw("Same")
+    fit_results = combined_function.GetParameters()
+    fit_errors = combined_function.GetParErrors()
 
-    # Plot the results
-    xframe = x.frame(RooFit.Title("Crystal Ball Fit Example"))
-    data.plotOn(xframe)
-    crystal_ball.plotOn(xframe)
-
-    # Draw the plot on a canvas
-    canvas = ROOT.TCanvas("canvas", "Crystal Ball Fit", 800, 600)
-    canvas.SetRightMargin(0.33)
-    ROOT.gPad.SetLogy(1)
-    xframe.Draw()
-
+    #    Print the results
+    for i in range(n_params):
+        print(f"Parameter {i}: {fit_results[i]} ± {fit_errors[i]}")
     if save_name_pdf:
         canvas.SaveAs(save_name_pdf)
 
@@ -902,5 +1096,41 @@ def fit_chrystalball(file_name:str,tree_name:str,save_name_file:str,save_name_pd
         output_file = ROOT.TFile(save_name_file, "UPDATE")
     else:
         output_file = ROOT.TFile(save_name_file, "RECREATE")
-    xframe.Write()
+    hist.Write()
     output_file.Close()
+
+
+def get_branch2_foreverybin_branch1(file_name:str, branch1:str, branch2:str,n_branch1:int=20,n_branch2:int=100):
+    
+    file = ROOT.TFile(file_name)
+    all_trees = find_trees(file)
+
+    # Number of bins
+    n_bins = n_branch1
+
+    # Get the range of the controlling branch
+    min_val=float('inf')
+    max_val=-float("inf")
+    for tree_name in all_trees:
+        tree = file.Get(tree_name)
+        if tree.GetMinimum(branch1)<min_val:
+            min_val = tree.GetMinimum(branch1)
+        if tree.GetMaximum(branch1)>max_val:
+            max_val = tree.GetMaximum(branch1)
+    bin_width = (max_val - min_val) / n_bins
+    print("min: ", min_val)
+    print("max: ", max_val)
+    print("width: ", bin_width)
+
+    # Create histograms for each bin
+    histograms = [ROOT.TH1F(f"hist_{i}", f"Branch2 Distribution for Branch1 in Bin {i};Branch2;Entries", n_branch2, 0,0) for i in range(n_bins)]
+
+    # Fill the histograms
+    for tree_name in all_trees:
+        tree = file.Get(tree_name)
+        for event in tree:
+            bin_index = int((getattr(event, branch1) - min_val) / bin_width)
+            if 0 <= bin_index < n_bins:
+                histograms[bin_index].Fill(getattr(event, branch2))
+
+    return histograms 

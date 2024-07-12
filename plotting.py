@@ -335,14 +335,30 @@ def plot_comb_daughterPDG(var:Sequence[str],data:TreeHandler):
         pdfs.append(save_dir_plots+f"DistDau{i}_{j}.pdf")
     prep.merge_pdfs(pdfs,output_path=save_dir_plots+"Dist_daughterpairs.pdf")
 
-def plot_chrystalball_fit(x_max:float=1.3,x_min:float=1,folders:bool=True,savepdf:bool=False, var:str="fMass",save_name_root:str=f"data_{no_set}.root"):
+def plot_chrystalball_fit(x_min_fit:float=1.086,x_max_fit:float=1.14,x_min_data:float=1.05,x_max_data:float=1.16,savepdf:bool=False, var:str="fMass",save_name_root:str=f"data_{no_set}.root",nobins:int=200,cheb:bool=False,save_file:bool=False,logy:bool=True):
 
     if savepdf:
-        pdfname=f"/home/katrin/Cern_summerProject/crystalball_fits/crystalball_set{no_set}.pdf"
+        if cheb:
+            pdfname=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/crystalball_bckg_cheb.pdf"
+        else:
+            pdfname=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/crystalball_bckg_poly.pdf"
     else: 
         pdfname=False
     snf="/home/katrin/Cern_summerProject/crystalball_fits/"+save_name_root
-    prep.fit_chrystalball(file_name=file_directory_data,tree_name=tree_data,save_name_file=snf,save_name_pdf=pdfname,x_max=x_max,x_min=x_min,folders=folders,var=var)
+    prep.fit_chrystalball(file_name=file_directory_data,tree_name=tree_data,save_name_file=snf,save_name_pdf=pdfname,x_max_data=x_max_data,x_min_data=x_min_data,x_max_fit=x_max_fit,x_min_fit=x_min_fit,var=var,no_bins=nobins,cheb=cheb,save_file=save_file,logy=logy)
+
+
+
+def crystalball_fit_seperatedbins(x_min_fit:float=1.086,x_max_fit:float=1.4,x_min_data:float=1.05,x_max_data:float=1.6,savepdf:bool=False, var1:str="fPt", var2:str="fMass",save_file:bool=False, n:int=20):
+
+    hists=prep.get_branch2_foreverybin_branch1(file_name=file_directory_data,branch1=var1, branch2=var2, n_branch1=n)
+    for i in range(len(hists)):
+        if savepdf:
+            pdfname=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/{var2}Fit_{var1}bin_{i}.pdf"
+        else: 
+            pdfname=False
+        snf=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/{var2}Fit_{var1}bin_{i}.root"
+        prep.fit_chrystalball(file_name=file_directory_data,tree_name=tree_data,save_name_file=snf,save_name_pdf=pdfname,hist_given=hists[i],x_max=x_max,x_min=x_min,var=var2,title=f"{var2}-Fit, {var1}-bin {i}", save_file=save_file)
 
 def analysis_cutted_subsets(already_saved:bool=True, onlynewMC:bool=False):
 
@@ -401,4 +417,6 @@ def analysis_cutted_subsets(already_saved:bool=True, onlynewMC:bool=False):
 #analysis_cutted_subsets()
 #plot_bck_cuts() 
 
-plot_chrystalball_fit(x_max=1.18,x_min=1.05,savepdf=True)
+plot_chrystalball_fit( savepdf=True,cheb=True,logy=True)
+plot_chrystalball_fit( savepdf=True,cheb=False,logy=True)
+#crystalball_fit_seperatedbins(x_max=1.14,x_min=1.08, savepdf=True)
