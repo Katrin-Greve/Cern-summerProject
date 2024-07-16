@@ -12,6 +12,19 @@ import PyPDF2
 import os
 import seaborn as sns
 from ROOT import RooFit, RooRealVar, RooDataSet, RooArgList, RooAddPdf, RooPlot, RooArgList, RooPolynomial, RooDataHist, RooHist
+import sys
+import io
+
+class ErrorFilter(io.StringIO):
+    def __init__(self):
+        super().__init__()
+
+    def write(self, msg):
+        if 'Error in <TTree::Fill>' not in msg:
+            sys.__stderr__.write(msg)
+
+# Redirect the standard error
+sys.stderr = ErrorFilter()
 
 ###################################################
 ### Convert TreeHandler, Arrays and .root Files ###
@@ -608,7 +621,7 @@ def plot_2dhist_numpy(data:TreeHandler, var1:str, var2:str,ax, bin:int=100, cmap
 
 
 # Function to draw and save a 2d histogram using ROOT
-def plot_2dhist_root(file:str, tree_name:str,  var1:str, var2:str, save_name_file:str, hist_name:str, save_name_pdf:str, title:str ,bins:int=7,cmap=ROOT.kRainbow,folders:bool=False):
+def plot_2dhist_root(file:str,  var1:str, var2:str, save_name_file:str, hist_name:str, title:str, save_name_pdf:Union[str,None]=None ,binsx:int=7,binsy:int=7,cmap=ROOT.kRainbow, minx:float=0, maxx:float=0, miny:float=0 , maxy:float=0):
     """
     Plot a 2 dimensional histogram using ROOT. Saves the histogram as pdf and as a .root file.
 
@@ -624,24 +637,19 @@ def plot_2dhist_root(file:str, tree_name:str,  var1:str, var2:str, save_name_fil
         bins (int): no. of bins in the histogram. Default to 7
         cmap: Cmap, used in the plot. Default to ROOT.kRainbow
     """
-    root_file = ROOT.TFile(file, "READ")
+    root_file = ROOT.TFile(file)
 
-    if not folders:
-        hist = ROOT.TH2F(hist_name, title, bins, 0,0, bins, 0,0)
+    hist = ROOT.TH2F(hist_name, title, binsx , minx, maxx, binsy, miny,maxy)
+    all_trees = find_trees(root_file)
+    for tree_name in all_trees:
+        hist_name = "temp_hist_{tree_name}"
+        hist_help = ROOT.TH2F(hist_name, "", binsx , minx, maxx, binsy, miny,maxy)
+        #print(tree_name)
         tree = root_file.Get(tree_name)
         tree.Draw(f"{var2}:{var1} >> {hist_name}")
-    else: 
-        hist = ROOT.TH2F(hist_name, title, bins , 0,0, bins, 0,0)
-        all_trees = find_trees(root_file)
-        for tree_name in all_trees:
-            hist_name = "temp_hist_{tree_name}"
-            hist_help = ROOT.TH2F(hist_name, "", bins ,0,0, bins,0,0)
-            #print(tree_name)
-            tree = root_file.Get(tree_name)
-            tree.Draw(f"{var2}:{var1} >> {hist_name}")
-            hist.Add(hist_help)      
+        hist.Add(hist_help)      
 
-    print(f"ok, tree draws {var1}, {var2}")
+    print(f"ok, draw {var2} -> {var1}")
     canvas = ROOT.TCanvas("canvas", "", 1000, 600)
     canvas.SetRightMargin(0.33)
     hist.Draw("COLZ")
@@ -663,8 +671,9 @@ def plot_2dhist_root(file:str, tree_name:str,  var1:str, var2:str, save_name_fil
     ROOT.gPad.SetLogz(1)
 
     # Save the canvas as an image file if needed
-    canvas.SaveAs(save_name_pdf)
-    canvas.Close()
+    if save_name_pdf:
+        canvas.SaveAs(save_name_pdf)
+        canvas.Close()
     # Create a new ROOT file to save the histogram
     if os.path.exists(save_name_file):
         output_file = ROOT.TFile(save_name_file, "UPDATE")
@@ -673,7 +682,7 @@ def plot_2dhist_root(file:str, tree_name:str,  var1:str, var2:str, save_name_fil
     hist.Write()
     output_file.Close()
 
-def add_projection(file_name:str, hist_name:str, save_name_pdf:str, axis:int=0):
+def add_projection(file_name:str, hist_name:str, save_name_pdf:Union[str,None]=None, axis:int=0):
 
     file = ROOT.TFile.Open(file_name)
     h2 = file.Get(hist_name)
@@ -693,7 +702,8 @@ def add_projection(file_name:str, hist_name:str, save_name_pdf:str, axis:int=0):
         legend.SetY2NDC(0.95)  # Adjust Y2 position in normalized coordinates
     h1.SetFillStyle(3000)
     h1.SetFillColor(ROOT.kAzure+6)
-    canvas.SaveAs(save_name_pdf)
+    if save_name_pdf:
+        canvas.SaveAs(save_name_pdf)
     canvas.Close()
     output_file = ROOT.TFile(file_name, "UPDATE")
     h1.Write()
@@ -844,16 +854,23 @@ def find_trees(directory, path=""):
     return trees
 
 
-def fit_chrystalball(file_name:str,tree_name:str,save_name_file:str,save_name_pdf:Union[str,None]=None,hist_given:Union[ROOT.TH1F,None]=None, var:str="fMass",save_file:bool=True,x_min_fit:float=1.086,x_max_fit:float=1.14,x_min_data:float=1.05,x_max_data:float=1.16,no_bins:int=250,title:str="crystalball+background fit",cheb:bool=False, logy:bool=True,n_sig:float=4):
+def fit_chrystalball(save_name_file:str,hist_given:Union[ROOT.TH1F, None]=None,file_name:Union[str,None]=None,tree_name:Union[str,None]=None,save_name_pdf:Union[str,None]=None, var:str="fMass",save_file:bool=True,x_min_fit:float=1.086,x_max_fit:float=1.14,x_min_data:float=1.05,x_max_data:float=1.16,no_bins:int=100,title:str="crystalball+background fit",cheb:bool=False, logy:bool=True,n_sig:float=4):
+
 
     # Create a ROOT application
     ROOT.gROOT.SetBatch(True)
-    
-    if not hist_given:
-        root_file = ROOT.TFile(file_name)    
-        hist = ROOT.TH1F("hist", "Data", no_bins, 0,0)  # Adjust binning and range as necessary      
-    x = RooRealVar(var, var, x_min_fit, x_max_fit)
+    ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.ERROR)
+    ROOT.RooMsgService.instance().setSilentMode(ROOT.kTRUE)
+    ROOT.gErrorIgnoreLevel = ROOT.kError
+    sys.stderr = ErrorFilter()
 
+    if hist_given != None:
+        hist=hist_given  
+    else:
+        root_file = ROOT.TFile(file_name)    
+        hist = ROOT.TH1F("hist", "Data", no_bins, 0,0)  # Adjust binning and range as necessary
+
+    x = RooRealVar(var, var, x_min_fit, x_max_fit)
     fit_range = ROOT.RooFit.Range(x_min_fit, x_max_fit)
     print("min, max value for fitting: ", x_min_fit, x_max_fit)       
 
@@ -871,71 +888,115 @@ def fit_chrystalball(file_name:str,tree_name:str,save_name_file:str,save_name_pd
                 temp_data =  RooDataHist("data_hist", "RooDataHist from TH1",RooArgList(x), hist)
                 data.append(temp_data)
 
+        mean = RooRealVar("mean", "mean of gaussian", 1.1155, 1.115, 1.116)
+        sigma = RooRealVar("sigmaLR", "width of gaussian", 0.001, 0.00001, 0.01)
+        alphaL = RooRealVar("alphaL", "alphaL", 1.38, 0.1, 10)
+        nL = RooRealVar("nL", "nL", 6, 0.01, 10)
+        alphaR = RooRealVar("alphaR", "alphaR", 1.4, 0.1, 10)
+        nR = RooRealVar("nR", "nR", 9, 0.01, 10)
+        # Define the Crystal Ball function
+        crystal_ball = ROOT.RooCrystalBall("crystal_ball", "Crystal Ball PDF", x, mean, sigma, alphaL, nL,alphaR, nR)
+
     else:
         data = RooDataHist("data_hist", "RooDataHist from TH1", RooArgList(x), hist_given)
+        mean = RooRealVar("mean", "mean of gaussian", 1.1155, 1.115, 1.116)
+        sigma = RooRealVar("sigmaLR", "width of gaussian", 0.001, 0.00001, 0.01)
+        alphaL = RooRealVar("alphaL", "alphaL", 1.38, 1, 10)
+        nL = RooRealVar("nL", "nL", 1, 0.01, 10)
+        alphaR = RooRealVar("alphaR", "alphaR", 1, 0.5, 10)
+        nR = RooRealVar("nR", "nR", 9, 0.01, 10)
+        #Define the Crystal Ball function
+        #crystal_ball = ROOT.RooCrystalBall("crystal_ball", "Crystal Ball PDF", x, mean, sigma, alphaL, nL,alphaR, nR)
+        #mean, sigma, alphaL, nL, alphaR, nR,p0,p1 = fit_chrystalball_manuel(file_name=None, hist_given=hist_given)
+        crystal_ball = ROOT.RooCrystalBall("crystal_ball", "Crystal Ball PDF", x, mean, sigma, alphaL, nL,alphaR, nR)
 
-    mean = RooRealVar("mean", "mean of gaussian", 1.1155, 1.115, 1.116)
-    sigma = RooRealVar("sigmaLR", "width of gaussian", 0.001, 0.00001, 0.01)
-    alphaL = RooRealVar("alphaL", "alphaL", 1.38, 0.01, 10)
-    nL = RooRealVar("nL", "nL", 7.7, 0.01, 10)
-    alphaR = RooRealVar("alphaR", "alphaR", 1.4, 0.01, 10)
-    nR = RooRealVar("nR", "nR", 10, 0.01, 10)
-    # Define the Crystal Ball function
-    crystal_ball = ROOT.RooCrystalBall("crystal_ball", "Crystal Ball PDF", x, mean, sigma, alphaL, nL,alphaR, nR)
-    
+
     if not cheb:   
-        p0 = RooRealVar("p0", "coefficient of constant term", -1.115,-10000,10000)
-        p1 = RooRealVar("p1", "coefficient of linear term", 1.23,-10000,10000)
+        if not hist_given:
+            coef1 = RooRealVar("coef1", "coefficient of chrystal ball", 100000,0,100000000)
+            coef2 = RooRealVar("coef2", "coefficient of quadratic", 1000,0,1000000000)
+            p0 = RooRealVar("p0", "coefficient of constant term", 69,-10000,10000)
+            p1 = RooRealVar("p1", "coefficient of linear term", -54,-100,10000)
+            quadratic = ROOT.RooPolynomial("quadratic", "Quadratic function", x, RooArgList(p0,p1))
+
+        else:
+            coef1 = RooRealVar("coef1", "coefficient of chrystal ball",1000000,0,100000000)
+            coef2 = RooRealVar("coef2", "coefficient of quadratic", 1000,0,1000000000)
+            p0 = RooRealVar("p0", "coefficient of constant term", 100,-10000,10000)
+            p1 = RooRealVar("p1", "coefficient of linear term", -50,-10000,10000)
+            quadratic = ROOT.RooPolynomial("quadratic", "Quadratic function", x, RooArgList(p0,p1))
+            #fit_range_help = ROOT.RooFit.Range(1.086, 1.1)
+            #quadratic.fitTo(data, fit_range_help)
+            fit_range_help2 = ROOT.RooFit.Range(1.13, 1.14)
+            quadratic.fitTo(data, fit_range_help2)
+        
+
+            
     else:
         p0 = RooRealVar("p0", "coefficient of constant term", -0.115,-10000,10000)
-        p1 = RooRealVar("p1", "coefficient of linear term", -0.158,-10000,10000)        
-    #p2 = RooRealVar("p2", "coefficient of quadratic term", -0.1,-100,0)
-    quadratic = ROOT.RooPolynomial("quadratic", "Quadratic function", x, RooArgList(p0,p1))
-    chebychev = ROOT.RooChebychev("chebychev", "chebychev polynomial",x, RooArgList(p0,p1))
-    # Combine the Crystal Ball function and the quadratic function
-    frac = RooRealVar("frac", "fraction", 0.5, 0, 1)
-    #norm = RooRealVar("norm", "norm", )
+        p1 = RooRealVar("p1", "coefficient of linear term", -0.158,-10000,10000) 
+        chebychev = ROOT.RooChebychev("chebychev", "chebychev polynomial",x, RooArgList(p0,p1))
+        if not hist_given:
+            coef1 = RooRealVar("coef1", "coefficient of chrystal ball", 10000,0,100000000)
+            coef2 = RooRealVar("coef2", "coefficient of quadratic", 1000,0,1000000000)
+        else:
+            coef1 = RooRealVar("coef1", "coefficient of chrystal ball", 100000*9,0,100000000)
+            coef2 = RooRealVar("coef2", "coefficient of quadratic", 1000*9,0,1000000000)
+            fit_range_help = ROOT.RooFit.Range(1.086, 1.1)
+            chebychev.fitTo(data, fit_range_help)
+            fit_range_help2 = ROOT.RooFit.Range(1.13, 1.14)
+            chebychev.fitTo(data, fit_range_help2)                
+
+    # Combine the Crystal Ball function and the background function
     if not cheb:
-        model = RooAddPdf("model", "Crystal Ball + Quadratic", RooArgList(crystal_ball, quadratic), RooArgList(frac))
+        model = RooAddPdf("model", "Crystal Ball + Quadratic", RooArgList(crystal_ball, quadratic), RooArgList(coef1, coef2))
     else:
-        model = RooAddPdf("model", "Crystal Ball + Chebychev", RooArgList(crystal_ball, chebychev), RooArgList(frac))
+        model = RooAddPdf("model", "Crystal Ball + Chebychev", RooArgList(crystal_ball, chebychev), RooArgList(coef1, coef2))
+
 
     # Perform the fit
     result=model.fitTo(data, fit_range, RooFit.Save())
     chi2 = model.createChi2(data).getVal()
 
-    mean_val = result.floatParsFinal().find("mean")
-    sigma_val = result.floatParsFinal().find("sigmaLR")
-  
-    x.setRange("integrationRange", mean_val.getVal()-n_sig*sigma_val.getVal(), mean_val.getVal()+n_sig*sigma_val.getVal())
+    mean_val = result.floatParsFinal().find("mean").getVal()
+    sigma_val = abs(result.floatParsFinal().find("sigmaLR").getVal())
+    mean_val=mean.getVal()
+    sigma_val=sigma.getVal()
+    print(coef1, coef2)
 
-    # Integrate the functions over the range
-    integral1 = crystal_ball.createIntegral(ROOT.RooArgSet(x), RooFit.Range("integrationRange"))
-    integral2 = model.createIntegral(ROOT.RooArgSet(x), RooFit.Range("integrationRange"))
+    x.setRange("integrationRange", mean_val-n_sig*sigma_val, mean_val+n_sig*sigma_val)
 
-    # Get the numerical values of the integrals
-    integral1_val = integral1.getVal()
-    integral2_val = integral2.getVal()
+    components = model.getComponents()
+    cb_component = components.find("crystal_ball")
+    if not cheb:
+        bckg_component= components.find("quadratic")
+    else:
+        bckg_component= components.find("chebychev")
 
-    # Step 4: Calculate the purity (ratio of the integrals)
-    purity = integral1_val / integral2_val
+    integral_bckg = bckg_component.createIntegral(ROOT.RooArgSet(x), RooFit.Range("integrationRange"),RooFit.NormSet(ROOT.RooArgSet(x)))
+    integral_signal = cb_component.createIntegral(ROOT.RooArgSet(x), RooFit.Range("integrationRange"),RooFit.NormSet(ROOT.RooArgSet(x)))
+
+    integral_bckg_val = integral_bckg.getVal()
+    integral_signal_val = integral_signal.getVal()
+
+    purity = integral_signal_val / (integral_bckg_val*(coef2.getVal()/coef1.getVal())+integral_signal_val)
 
     # Plot the results
     xframe = x.frame(RooFit.Title(title))
     data.plotOn(xframe)
     model.plotOn(xframe, RooFit.LineColor(ROOT.kBlue))
-    model.plotOn(xframe,   RooFit.Components("crystal_ball"), RooFit.LineStyle(ROOT.kDashed), RooFit.LineColor(ROOT.kRed))
+    model.plotOn(xframe, RooFit.Components("crystal_ball"), RooFit.LineStyle(ROOT.kDashed), RooFit.LineColor(ROOT.kRed))
     if not cheb:
         model.plotOn(xframe,  RooFit.Components("quadratic"), RooFit.LineStyle(ROOT.kDotted), RooFit.LineColor(ROOT.kGreen))
     else:
         model.plotOn(xframe, RooFit.Components("chebychev"), RooFit.LineStyle(ROOT.kDotted), RooFit.LineColor(ROOT.kGreen))
 
     
-    line1 = ROOT.TLine(mean_val.getVal()+n_sig*sigma_val.getVal(), xframe.GetMinimum(), mean_val.getVal()+n_sig*sigma_val.getVal(), xframe.GetMaximum())
+    line1 = ROOT.TLine(mean_val+n_sig*sigma_val, xframe.GetMinimum(), mean_val+n_sig*sigma_val, xframe.GetMaximum())
     line1.SetLineColor(ROOT.kBlack)
     line1.SetLineWidth(2)
     xframe.addObject(line1)
-    line2 = ROOT.TLine(mean_val.getVal()-n_sig*sigma_val.getVal(), xframe.GetMinimum(), mean_val.getVal()-n_sig*sigma_val.getVal(), xframe.GetMaximum())
+    line2 = ROOT.TLine(mean_val-n_sig*sigma_val, xframe.GetMinimum(), mean_val-n_sig*sigma_val, xframe.GetMaximum())
     line2.SetLineColor(ROOT.kBlack)
     line2.SetLineWidth(2)
     xframe.addObject(line2)
@@ -978,7 +1039,7 @@ def fit_chrystalball(file_name:str,tree_name:str,save_name_file:str,save_name_pd
     notes.AddText(f"Chi2/bin: {chi2/no_bins:.5f}")
     notes.AddText("\n")
     notes.AddText(f"Purity in {n_sig}-sig.:")
-    notes.AddText(f"={integral1_val:.3f} / {integral2_val:.3f}")
+    notes.AddText(f"={integral_signal_val:.5f} / {integral_bckg_val*(coef2.getVal()/coef1.getVal())+integral_signal_val:.5f}")
     notes.AddText(f"={purity:.3f}")
 
     notes.SetTextAlign(12)  # 12 means left alignment and top vertical alignment
@@ -1013,6 +1074,7 @@ def fit_chrystalball(file_name:str,tree_name:str,save_name_file:str,save_name_pd
             output_file = ROOT.TFile(save_name_file, "RECREATE")
         xframe.Write()
         output_file.Close()
+    
 
 
 def crystalball_plus_quadratic(x, params):
@@ -1028,7 +1090,6 @@ def crystalball_plus_quadratic(x, params):
     # Quadratic background parameters
     a = params[7]
     b = params[8]
-    c = params[9]
 
     # Crystal Ball function
     t = (x[0] - mu) / sigma
@@ -1045,42 +1106,49 @@ def crystalball_plus_quadratic(x, params):
         cb=norm_cb * ROOT.TMath.Exp(-0.5 * t * t)
     
     # Quadratic background function
-    quad = a * x[0]**2 + b * x[0] + c
+    quad = a * x[0]**2 + b * x[0] 
 
     return cb + quad
 
 
 
-def fit_chrystalball_manuel(file_name:str,tree_name:str,save_name_file:str,save_name_pdf:Union[str,None]=None,var:str="fMass",x_min:float=1.05,x_max:float=1.35,folders:bool=None):
+def fit_chrystalball_manuel(file_name:Union[str,None]=None,tree_name:Union[str,None]=None,save_name_file:Union[str,None]=None,save_name_pdf:Union[str,None]=None,var:str="fMass",x_min:float=1.086,x_max:float=1.14,folders:bool=None,hist_given:Union[ROOT.TH1F,None]=None, logy:bool=True,save_file:bool=False):
 
-    root_file = ROOT.TFile(file_name)
+    if not hist_given:
+        root_file = ROOT.TFile(file_name)
     canvas = ROOT.TCanvas("canvas", "Fit Canvas", 800, 600)
     canvas.SetRightMargin(0.33)
-    ROOT.gPad.SetLogy(1)
-    hist = ROOT.TH1F("hist", "Data", 100, 1.06, 1.16)  # Adjust binning and range as necessary      
+    if logy:
+        ROOT.gPad.SetLogy(1)
 
-    if not folders:
-        tree = root_file.Get(tree_name)
-        #cut = "fCosPA > 0.999"
-        cut = "fCosPA > 0.999 && fMass > 1.085 && fMass < 1.140"
-        temp_tree = tree.CopyTree(cut)
-        temp_tree.Draw(f"{var}>>hist")
-    else: 
-        all_trees = find_trees(root_file)
-        i=0
-        for tree_name in all_trees:
+    if not hist_given:
+        hist = ROOT.TH1F("hist", "Data", 100, 1.06, 1.16)  # Adjust binning and range as necessary      
+        if not folders:
             tree = root_file.Get(tree_name)
             #cut = "fCosPA > 0.999"
             cut = "fCosPA > 0.999 && fMass > 1.085 && fMass < 1.140"
             temp_tree = tree.CopyTree(cut)
             temp_tree.Draw(f"{var}>>hist")
+        else: 
+            all_trees = find_trees(root_file)
+            i=0
+            for tree_name in all_trees:
+                tree = root_file.Get(tree_name)
+                #cut = "fCosPA > 0.999"
+                cut = "fCosPA > 0.999 && fMass > 1.085 && fMass < 1.140"
+                temp_tree = tree.CopyTree(cut)
+                temp_tree.Draw(f"{var}>>hist")
+    
+    else:
+        hist=hist_given
+    n_params = 9
+    combined_function = ROOT.TF1("combined_function", crystalball_plus_quadratic, 1.086, 1.14, n_params)
+    combined_function.SetParameters(2, 1.5, 2, 1.2, 1.1155, 0.002, 400000, -1.0, 5.0)
+    combined_function.SetParNames("alphaL", "nL","alphaR", "nR", "mean", "sigmaLR", "norm_cb", "a", "b")
 
-    n_params = 10
-    combined_function = ROOT.TF1("combined_function", crystalball_plus_quadratic, 1.085, 1.14, n_params)
-    combined_function.SetParameters(2, 1.5, 2, 1.2, 1.1155, 0.002, 400000, -1.0, 5.0, 1000.0)
-    combined_function.SetParNames("alpha_l", "n_l","alpha_r", "n_r", "mu", "sigma", "norm_cb", "a", "b", "c")
 
     hist.Fit(combined_function, "R")
+
     combined_function.Draw("SAME")
     #consfunc.Draw("Same")
     fit_results = combined_function.GetParameters()
@@ -1092,45 +1160,119 @@ def fit_chrystalball_manuel(file_name:str,tree_name:str,save_name_file:str,save_
     if save_name_pdf:
         canvas.SaveAs(save_name_pdf)
 
-    if os.path.exists(save_name_file):
-        output_file = ROOT.TFile(save_name_file, "UPDATE")
+    mean = RooRealVar("mean", "mean of gaussian", fit_results[4])
+    sigma = RooRealVar("sigmaLR", "width of gaussian", fit_results[5])
+    alphaL = RooRealVar("alphaL", "alphaL", fit_results[0])
+    nL = RooRealVar("nL", "nL", fit_results[1])
+    alphaR = RooRealVar("alphaR", "alphaR", fit_results[2])
+    nR = RooRealVar("nR", "nR", fit_results[3])
+    p0 = RooRealVar("p0", "coefficient of linear term", fit_results[8]*10000/fit_results[6])
+    p1 = RooRealVar("p1", "coefficient of quadratic term", fit_results[7]*10000/fit_results[6])
+
+
+
+    if save_file:
+        if os.path.exists(save_name_file):
+            output_file = ROOT.TFile(save_name_file, "UPDATE")
+        else:
+            output_file = ROOT.TFile(save_name_file, "RECREATE")
+        hist.Write()
+        output_file.Close()
+    
+    return mean, sigma, alphaL, nL, alphaR, nR,p0,p1
+
+
+
+def create_1d_histograms_from_2d(file_name:str, hist_name:str, already_saved:bool=False)->Sequence[ROOT.TH1F]:
+    # Get the number of bins in y-axis from the original histogram
+    file = ROOT.TFile(file_name)
+    original_hist2d=file.Get(hist_name)
+    y_bins = original_hist2d.GetNbinsY()
+
+    if not already_saved:
+
+        # Get the x-axis properties from the original histogram
+        x_bins = original_hist2d.GetNbinsX()
+        x_min = original_hist2d.GetXaxis().GetXmin()
+        x_max = original_hist2d.GetXaxis().GetXmax()
+
+        # Create a list to hold the 1D histograms
+        histograms = []
+
+        # Loop over each y-bin and create a corresponding 1D histogram
+        for y_bin in range(1, y_bins + 1):
+            y_bin_low_edge = original_hist2d.GetYaxis().GetBinLowEdge(y_bin)
+            y_bin_up_edge = original_hist2d.GetYaxis().GetBinUpEdge(y_bin)
+            hist_name = f"hist_ybin_{y_bin}"
+            hist_title = f"1D Projection for Y Bin [{y_bin_low_edge}, {y_bin_up_edge}]"
+            hist = ROOT.TH1F(hist_name, hist_title, x_bins, x_min, x_max)
+
+            # Fill the 1D histogram with the x-values for this y-bin
+            for x_bin in range(1, x_bins + 1):
+                bin_content = original_hist2d.GetBinContent(x_bin, y_bin)
+                bin_error = original_hist2d.GetBinError(x_bin, y_bin)
+                hist.SetBinContent(x_bin, bin_content)
+                #hist.SetBinError(x_bin, bin_error)
+
+            # Append the 1D histogram to the list
+            histograms.append(hist)
+            output_file = ROOT.TFile(file_name, "UPDATE")
+            hist.Write()
+            output_file.Close()
     else:
-        output_file = ROOT.TFile(save_name_file, "RECREATE")
-    hist.Write()
+        histograms=[]
+        for i in range(1,y_bins+1):
+            hist=file.Get(f"hist_ybin_{i}")
+            print(hist)
+            histograms.append(hist)
+    print(histograms)
+    return histograms
+
+
+def new_bin_edges(file_name:str, new_bins:Sequence[float],hist_name:str,reb_y:bool=False):
+
+    file=ROOT.TFile.Open(file_name)
+    original_hist=file.Get(hist_name)
+    new_bins=np.array(new_bins)
+    if reb_y:
+        x_bins = original_hist.GetXaxis().GetNbins()
+        x_min = original_hist.GetXaxis().GetXmin()
+        x_max = original_hist.GetXaxis().GetXmax()
+        rebinned_hist = ROOT.TH2F("rebinned_hist", "Rebinned Y-Axis 2D Histogram",x_bins, x_min, x_max, len(new_bins) - 1, new_bins)
+    else:
+        y_bins = original_hist.GetYaxis().GetNbins()
+        y_min = original_hist.GetYaxis().GetXmin()
+        y_max = original_hist.GetYaxis().GetXmax()
+        rebinned_hist = ROOT.TH2F("rebinned_hist", "Rebinned X-Axis 2D Histogram",len(new_bins) - 1, new_bins, y_bins, y_min, y_max)
+
+    # Fill the new histogram with content from the original histogram
+    for i in range(1, original_hist.GetNbinsX() + 1):
+        for j in range(1, original_hist.GetNbinsY() + 1):
+            x_bin_center = original_hist.GetXaxis().GetBinCenter(i)
+            y_bin_center = original_hist.GetYaxis().GetBinCenter(j)
+            bin_content = original_hist.GetBinContent(i, j)
+            bin_error = original_hist.GetBinError(i, j)
+            rebinned_hist.Fill(x_bin_center, y_bin_center, bin_content)
+            new_bin = rebinned_hist.FindBin(x_bin_center, y_bin_center)
+            rebinned_hist.SetBinError(new_bin, np.sqrt(rebinned_hist.GetBinError(new_bin)**2 + bin_error**2))
+
+    output_file = ROOT.TFile(file_name, "UPDATE")
+    rebinned_hist.Write()
     output_file.Close()
 
-
-def get_branch2_foreverybin_branch1(file_name:str, branch1:str, branch2:str,n_branch1:int=20,n_branch2:int=100):
     
+
+def get_minmax_of_tree(file_name:str, branch1:str):
     file = ROOT.TFile(file_name)
     all_trees = find_trees(file)
-
-    # Number of bins
-    n_bins = n_branch1
-
-    # Get the range of the controlling branch
     min_val=float('inf')
     max_val=-float("inf")
     for tree_name in all_trees:
-        tree = file.Get(tree_name)
+        tree_pre = file.Get(tree_name)
+        tree=tree_pre.CopyTree(f"{branch1} > 0 ")
         if tree.GetMinimum(branch1)<min_val:
             min_val = tree.GetMinimum(branch1)
         if tree.GetMaximum(branch1)>max_val:
             max_val = tree.GetMaximum(branch1)
-    bin_width = (max_val - min_val) / n_bins
     print("min: ", min_val)
     print("max: ", max_val)
-    print("width: ", bin_width)
-
-    # Create histograms for each bin
-    histograms = [ROOT.TH1F(f"hist_{i}", f"Branch2 Distribution for Branch1 in Bin {i};Branch2;Entries", n_branch2, 0,0) for i in range(n_bins)]
-
-    # Fill the histograms
-    for tree_name in all_trees:
-        tree = file.Get(tree_name)
-        for event in tree:
-            bin_index = int((getattr(event, branch1) - min_val) / bin_width)
-            if 0 <= bin_index < n_bins:
-                histograms[bin_index].Fill(getattr(event, branch2))
-
-    return histograms 

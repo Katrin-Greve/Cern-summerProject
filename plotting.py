@@ -8,6 +8,7 @@ from typing import Union, Sequence, List
 import seaborn as sns 
 import os
 import numpy as np
+import ROOT
 
 no_set=4
 directory_sets=f"/home/katrin/Cern_summerProject/root_trees/set_{no_set}/"
@@ -349,16 +350,62 @@ def plot_chrystalball_fit(x_min_fit:float=1.086,x_max_fit:float=1.14,x_min_data:
 
 
 
-def crystalball_fit_seperatedbins(x_min_fit:float=1.086,x_max_fit:float=1.4,x_min_data:float=1.05,x_max_data:float=1.6,savepdf:bool=False, var1:str="fPt", var2:str="fMass",save_file:bool=False, n:int=20):
+#def crystalball_fit_seperatedbins(x_min_fit:float=1.086,x_max_fit:float=1.4,x_min_data:float=1.05,x_max_data:float=1.6,savepdf:bool=False, var2:str="fPt", var1:str="fMass",cheb:bool=False,save_file:bool=False,logy:bool=True, n:int=4,hists_saved:bool=True):
+#
+#    #if hists_saved:
+#    #    hists=[]
+#    #    file = ROOT.TFile(f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/data.root")
+#    #    for i in range(n):
+#    #        hist = file.Get(f"hist_{i}")
+#    #        hists.append(hist)
+#    #else:
+#    #    save_dir_hists=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/data.root"
+#    #    hists=prep.get_branch2_foreverybin_branch1(file_name=file_directory_data, branch1=var1, branch2=var2, n_branch1=n,save_file=save_file,save_name_file=save_dir_hists)
+#    #    print(f"{var1} seperated hists saved")
+#    #for i in range(len(hists)):
+#    #    if savepdf:
+#    #        pdfname=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/perPtbin/{var2}Fit_{var1}bin_{i}.pdf"
+#    #        pdfname_manuel=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/perPtbin/{var2}Fit_{var1}bin_{i}_manuel.pdf"
+#    #    else: 
+#    #        pdfname=False
+#    #    snf=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/perPtbin/{var2}Fit_{var1}bin_{i}.root"
+#    #    prep.fit_chrystalball(file_name=file_directory_data,tree_name=tree_data,save_name_file=snf,save_name_pdf=pdfname,hist_given=hists[i], x_max_data=x_max_data,x_min_data=x_min_data,x_max_fit=x_max_fit,x_min_fit=x_min_fit,var=var2,cheb=cheb,save_file=save_file,logy=logy)
+#        #prep.fit_chrystalball_manuel(file_name=file_directory_data,tree_name=tree_data,save_name_file=snf,save_name_pdf=pdfname_manuel,hist_given=hists[i],save_file=save_file,logy=logy)
+#    prep.get_branch2_foreverybin_branch1(file_name=file_directory_data,branch1=var1,branch2=var2,save_name_file=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/2dhist.root", save_file=True,min_val_branch2=0.3,max_val_branch2=4)
 
-    hists=prep.get_branch2_foreverybin_branch1(file_name=file_directory_data,branch1=var1, branch2=var2, n_branch1=n)
-    for i in range(len(hists)):
-        if savepdf:
-            pdfname=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/{var2}Fit_{var1}bin_{i}.pdf"
+
+def crystalball_fit_seperatedbins(branch1:str="fMass", branch2:str="fPt", n_branch1:int=250, min_val_branch1:float=1.08, max_val_branch1:float=1.8, min_val_branch2:float=0.3,  max_val_branch2:float=4, binwidth_branch2:float=0.1, save_file:bool=False, hist2d_saved:bool=True,cheb:bool=False,logy:bool=True, save_pdf:bool=True):
+
+    newbins=[0.3,0.5,1,1.5,2,2.5,3,4]
+
+    if not hist2d_saved:
+        if max_val_branch2==min_val_branch2:
+            n=100
+        else:
+            n=int((max_val_branch2-min_val_branch2)/binwidth_branch2)
+        print("n_bins= ", n)
+        prep.plot_2dhist_root(file=file_directory_data, save_name_file=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/hist2d.root", var2=branch2, var1=branch1, hist_name=f"2dhist_{branch1}_{branch2}", title=f"2dhist_{branch1}_{branch2}" ,binsx=n_branch1, binsy=n, miny=min_val_branch2, maxy=max_val_branch2, minx=1.07, maxx=1.18)
+        prep.new_bin_edges(file_name=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/hist2d.root",hist_name=f"2dhist_{branch1}_{branch2}",new_bins=newbins, reb_y=True)
+        prep.add_projection(file_name=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/hist2d.root",hist_name=f"rebinned_hist",axis=0)
+        prep.create_1d_histograms_from_2d(file_name=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/hist2d.root",hist_name="rebinned_hist",already_saved=False )
+    
+    histograms=[]
+    file = ROOT.TFile(f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/hist2d.root")
+    for i in range(1,len(newbins)):
+        hist = file.Get(f"hist_ybin_{i}")
+        histograms.append(hist)
+    pdflist=[]
+    for i in range(len(histograms)):
+        if save_pdf:
+            pdfname=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/perPtbin/{branch2}Fit_{branch1}bin_{i}.pdf"
+            pdfname_manuel=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/perPtbin/{branch2}Fit_{branch1}bin_{i}_manuel.pdf"
+            pdflist.append(pdfname)
         else: 
             pdfname=False
-        snf=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/{var2}Fit_{var1}bin_{i}.root"
-        prep.fit_chrystalball(file_name=file_directory_data,tree_name=tree_data,save_name_file=snf,save_name_pdf=pdfname,hist_given=hists[i],x_max=x_max,x_min=x_min,var=var2,title=f"{var2}-Fit, {var1}-bin {i}", save_file=save_file)
+        snf=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/perPtbin/{branch2}Fit_{branch1}bin_{i}.root"
+        prep.fit_chrystalball(file_name=file_directory_data, tree_name=tree_data, save_name_file=snf,  save_name_pdf=pdfname, hist_given=histograms[i], x_max_data=max_val_branch1,x_min_data=min_val_branch1,x_max_fit=1.14,x_min_fit=1.086,var=branch1,cheb=cheb,save_file=save_file,logy=logy, title=f"Fit for Pt bin [{newbins[i]},{newbins[i+1]}]")
+    prep.merge_pdfs(pdf_list=pdflist,output_path=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/fits_perPtBin.pdf")
+
 
 def analysis_cutted_subsets(already_saved:bool=True, onlynewMC:bool=False):
 
@@ -417,6 +464,6 @@ def analysis_cutted_subsets(already_saved:bool=True, onlynewMC:bool=False):
 #analysis_cutted_subsets()
 #plot_bck_cuts() 
 
-plot_chrystalball_fit( savepdf=True,cheb=True,logy=True)
-plot_chrystalball_fit( savepdf=True,cheb=False,logy=True)
-#crystalball_fit_seperatedbins(x_max=1.14,x_min=1.08, savepdf=True)
+#plot_chrystalball_fit( savepdf=True,cheb=True,logy=True)
+#plot_chrystalball_fit( savepdf=True,cheb=False,logy=True)
+crystalball_fit_seperatedbins(hist2d_saved=True,cheb=True)
