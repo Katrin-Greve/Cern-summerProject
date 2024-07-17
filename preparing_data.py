@@ -621,7 +621,7 @@ def plot_2dhist_numpy(data:TreeHandler, var1:str, var2:str,ax, bin:int=100, cmap
 
 
 # Function to draw and save a 2d histogram using ROOT
-def plot_2dhist_root(file:str,  var1:str, var2:str, save_name_file:str, hist_name:str, title:str, save_name_pdf:Union[str,None]=None ,binsx:int=7,binsy:int=7,cmap=ROOT.kRainbow, minx:float=0, maxx:float=0, miny:float=0 , maxy:float=0):
+def plot_2dhist_root(file:str,  var1:str, var2:str, save_name_file:str, hist_name:str, title:str, save_name_pdf:Union[str,None]=None ,binsx:int=7,binsy:int=7,cmap=ROOT.kRainbow, minx:float=0, maxx:float=0, miny:float=0 , maxy:float=0,cuts:Union[str,None]=None):
     """
     Plot a 2 dimensional histogram using ROOT. Saves the histogram as pdf and as a .root file.
 
@@ -646,7 +646,11 @@ def plot_2dhist_root(file:str,  var1:str, var2:str, save_name_file:str, hist_nam
         hist_help = ROOT.TH2F(hist_name, "", binsx , minx, maxx, binsy, miny,maxy)
         #print(tree_name)
         tree = root_file.Get(tree_name)
-        tree.Draw(f"{var2}:{var1} >> {hist_name}")
+        if cuts:
+            tree_cutted = tree.CopyTree(cuts)
+            tree_cutted.Draw(f"{var2}:{var1} >> {hist_name}")
+        else:
+            tree.Draw(f"{var2}:{var1} >> {hist_name}")
         hist.Add(hist_help)      
 
     print(f"ok, draw {var2} -> {var1}")
@@ -899,15 +903,15 @@ def fit_chrystalball(save_name_file:str,hist_given:Union[ROOT.TH1F, None]=None,f
 
     else:
         data = RooDataHist("data_hist", "RooDataHist from TH1", RooArgList(x), hist_given)
-        mean = RooRealVar("mean", "mean of gaussian", 1.1155, 1.115, 1.116)
-        sigma = RooRealVar("sigmaLR", "width of gaussian", 0.001, 0.00001, 0.01)
-        alphaL = RooRealVar("alphaL", "alphaL", 1.38, 1, 10)
-        nL = RooRealVar("nL", "nL", 1, 0.01, 10)
-        alphaR = RooRealVar("alphaR", "alphaR", 1, 0.5, 10)
-        nR = RooRealVar("nR", "nR", 9, 0.01, 10)
+        #mean = RooRealVar("mean", "mean of gaussian", 1.1155, 1.115, 1.116)
+        #sigma = RooRealVar("sigmaLR", "width of gaussian", 0.001, 0.00001, 0.01)
+        #alphaL = RooRealVar("alphaL", "alphaL", 1.38, 1, 10)
+        #nL = RooRealVar("nL", "nL", 1, 0.01, 10)
+        #alphaR = RooRealVar("alphaR", "alphaR", 1, 0.5, 10)
+        #nR = RooRealVar("nR", "nR", 9, 0.01, 10)
         #Define the Crystal Ball function
         #crystal_ball = ROOT.RooCrystalBall("crystal_ball", "Crystal Ball PDF", x, mean, sigma, alphaL, nL,alphaR, nR)
-        #mean, sigma, alphaL, nL, alphaR, nR,p0,p1 = fit_chrystalball_manuel(file_name=None, hist_given=hist_given)
+        mean, sigma, alphaL, nL, alphaR, nR = fit_chrystalball_manuel(file_name=None, hist_given=hist_given)
         crystal_ball = ROOT.RooCrystalBall("crystal_ball", "Crystal Ball PDF", x, mean, sigma, alphaL, nL,alphaR, nR)
 
 
@@ -930,18 +934,17 @@ def fit_chrystalball(save_name_file:str,hist_given:Union[ROOT.TH1F, None]=None,f
             fit_range_help2 = ROOT.RooFit.Range(1.13, 1.14)
             quadratic.fitTo(data, fit_range_help2)
         
-
-            
+        
     else:
         p0 = RooRealVar("p0", "coefficient of constant term", -0.115,-10000,10000)
-        p1 = RooRealVar("p1", "coefficient of linear term", -0.158,-10000,10000) 
+        p1 = RooRealVar("p1", "coefficient of linear term", -0.158,-10000,1) 
         chebychev = ROOT.RooChebychev("chebychev", "chebychev polynomial",x, RooArgList(p0,p1))
         if not hist_given:
             coef1 = RooRealVar("coef1", "coefficient of chrystal ball", 10000,0,100000000)
             coef2 = RooRealVar("coef2", "coefficient of quadratic", 1000,0,1000000000)
         else:
-            coef1 = RooRealVar("coef1", "coefficient of chrystal ball", 100000*9,0,100000000)
-            coef2 = RooRealVar("coef2", "coefficient of quadratic", 1000*9,0,1000000000)
+            coef1 = RooRealVar("coef1", "coefficient of chrystal ball", 900000,0,100000000)
+            coef2 = RooRealVar("coef2", "coefficient of quadratic", 9000,0,1000000000)
             fit_range_help = ROOT.RooFit.Range(1.086, 1.1)
             chebychev.fitTo(data, fit_range_help)
             fit_range_help2 = ROOT.RooFit.Range(1.13, 1.14)
@@ -1040,7 +1043,7 @@ def fit_chrystalball(save_name_file:str,hist_given:Union[ROOT.TH1F, None]=None,f
     notes.AddText("\n")
     notes.AddText(f"Purity in {n_sig}-sig.:")
     notes.AddText(f"={integral_signal_val:.5f} / {integral_bckg_val*(coef2.getVal()/coef1.getVal())+integral_signal_val:.5f}")
-    notes.AddText(f"={purity:.3f}")
+    notes.AddText(f"={purity:.5f}")
 
     notes.SetTextAlign(12)  # 12 means left alignment and top vertical alignment
     notes.SetTextSize(0.03)  # Adjust the text size as needed
@@ -1160,8 +1163,8 @@ def fit_chrystalball_manuel(file_name:Union[str,None]=None,tree_name:Union[str,N
     if save_name_pdf:
         canvas.SaveAs(save_name_pdf)
 
-    mean = RooRealVar("mean", "mean of gaussian", fit_results[4])
-    sigma = RooRealVar("sigmaLR", "width of gaussian", fit_results[5])
+    mean = RooRealVar("mean", "mean of gaussian", fit_results[4], fit_results[4]-fit_results[5],fit_results[4]+fit_results[5])
+    sigma = RooRealVar("sigmaLR", "width of gaussian", fit_results[5],0,1)
     alphaL = RooRealVar("alphaL", "alphaL", fit_results[0])
     nL = RooRealVar("nL", "nL", fit_results[1])
     alphaR = RooRealVar("alphaR", "alphaR", fit_results[2])
@@ -1179,7 +1182,7 @@ def fit_chrystalball_manuel(file_name:Union[str,None]=None,tree_name:Union[str,N
         hist.Write()
         output_file.Close()
     
-    return mean, sigma, alphaL, nL, alphaR, nR,p0,p1
+    return mean, sigma, alphaL, nL, alphaR, nR
 
 
 
