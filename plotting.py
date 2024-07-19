@@ -10,7 +10,7 @@ import os
 import numpy as np
 import ROOT
 
-no_set=4
+no_set=5
 directory_sets=f"/home/katrin/Cern_summerProject/root_trees/set_{no_set}/"
 directory_hists=f"/home/katrin/Cern_summerProject/root_histograms/set_{no_set}/"
 save_dir_plots = f'/home/katrin/Cern_summerProject/imgs/set_{no_set}/'
@@ -42,9 +42,20 @@ if no_set==4:
     file_directory_data="/home/katrin/Cern_summerProject/data/AO2D_data_new.root"
     tree_data="O2lambdatableml"
     #file_directory_mc="/home/katrin/Cern_summerProject/data/AO2D_MC_mothdau.root"
-    file_directory_mc="/home/katrin/Cern_summerProject/data/AO2D_MC.root"
+    file_directory_mc="/home/katrin/Cern_summerProject/data/AO2D_MC_daughters.root"
     tree_mc="O2mclambdatableml"
     fname="DF*"
+
+if no_set==5:
+    file_directory_data="/home/katrin/Cern_summerProject/data/AO2D_data_woK0.root"
+    tree_data="O2lambdatableml"
+    #file_directory_mc="/home/katrin/Cern_summerProject/data/AO2D_MC_mothdau.root"
+    #file_directory_mc="/home/katrin/Cern_summerProject/data/AO2D_MC_woK0.root"
+    file_directory_mc="/home/katrin/Cern_summerProject/data/AO2D_MC_daughters.root"
+
+    tree_mc="O2mclambdatableml"
+    fname="DF*"
+
 
 # function to get the usual needed data sets
 def get_sets(already_saved:bool=True, onlynewMC:bool=False):
@@ -60,6 +71,8 @@ def get_sets(already_saved:bool=True, onlynewMC:bool=False):
         prompt=prep.add_GenRadius(prep.proton_pion_division(prep.get_prompt(file_directory_mc=file_directory_mc,tree_mc=tree_mc,folder_name=fname)))
         nonprompt=prep.add_GenRadius(prep.proton_pion_division(prep.get_nonprompt(file_directory_mc=file_directory_mc,tree_mc=tree_mc,folder_name=fname)))
         matter, antimatter=prep.filter_posneg_Pt(data=bckg_MC)
+        bckg_MC_cutted=prep.cut_data(data=prep.cut_data(data=bckg_MC, var="fMass", lower_cut=1.1, upper_cut=1.1208, inclusive=False), var="fQtAP", upper_cut=0.12)
+        prep.save_sets(sets=[bckg_MC_cutted], set_names=["bckg_MC_cutted"],dir_tree=directory_sets)
         prep.save_sets(sets=[matter,antimatter],set_names=["matter_bckg_MC", "antimatter_bckg_MC"],dir_tree=directory_sets)
         prep.save_sets([bckg_MC,prompt,nonprompt],set_names=["bckg_MC","prompt","nonprompt"],dir_tree=directory_sets)
         print("MC Subsets saved!")
@@ -99,49 +112,48 @@ def get_sets(already_saved:bool=True, onlynewMC:bool=False):
     return allsets
 
 # function to visualize, how one gets the background out of the data by using cuts on the mass
-def plot_bck_cuts():
+def plot_bck_cuts(save_fig:bool=False):
 
     data=prep.get_rawdata(file_directory_data,tree_data, folder_name=fname)
-    pdf_filename = save_dir_plots+'prep_MLdata_bckg.pdf'
-    pdf = PdfPages(pdf_filename) 
     prep.plot_hist(data,"fMass",leg_labels="raw data", fs=(8,3),alpha=0.5)
 
     cu2=prep.fitplot_gauss_rec(data, var="fMass",p0=[300000,1.115,0.005,1000],fs=(8,3),sig_cut=6)[2]
     bckg=prep.get_bckg(file_directory_data, tree_data, cuts=cu2, folder_name=fname)
 
     prep.plot_hist(bckg,"fMass",leg_labels=f"bckg, cuts=]{cu2[0]:.4f}{cu2[1]:.4f}[",fs=(8,3),alpha=0.5)
-
-    for fig_num in plt.get_fignums():
-        fig = plt.figure(fig_num)
-        pdf.savefig(fig, bbox_inches="tight")
-        plt.close(fig)
-    pdf.close()
+    if save_fig:
+        pdf_filename = save_dir_plots+'prep_MLdata_bckg.pdf'
+        pdf = PdfPages(pdf_filename) 
+        for fig_num in plt.get_fignums():
+            fig = plt.figure(fig_num)
+            pdf.savefig(fig, bbox_inches="tight")
+            plt.close(fig)
+        pdf.close()
+    else:
+        plt.show()
 
 #function that shows the distribution of the MC data, the prompt and the nonprompt distribution
-def plot_prompt_nonprompt():
+def plot_prompt_nonprompt(save_fig:bool=False):
     
     data=prep.get_rawMC_data(file_directory_mc, tree_mc ,folder_name=fname)
-    pdf_filename =save_dir_plots+'prep_MLdata_prompt.pdf'
-    pdf = PdfPages(pdf_filename)
-
     prompt= prep.get_prompt(file_directory_mc, tree_mc,folder_name=fname)
     nonprompt=prep.get_nonprompt(file_directory_mc, tree_mc,folder_name=fname)
-    
-
     prep.plot_hist(data,"fMass",leg_labels="raw MC", fs=(8,3),alpha=0.5)
     prep.plot_hist(prompt,"fMass",leg_labels="prompt",fs=(8,3),alpha=0.5)
     prep.plot_hist(nonprompt,"fMass",leg_labels="nonprompt",fs=(8,3),alpha=0.5)
+    if save_fig:
+        pdf_filename =save_dir_plots+'prep_MLdata_prompt.pdf'
+        pdf = PdfPages(pdf_filename)
+        for fig_num in plt.get_fignums():
+            fig = plt.figure(fig_num)
+            pdf.savefig(fig, bbox_inches="tight")
+            plt.close(fig)
+        pdf.close()
+    else:
+        plt.show()
 
-    for fig_num in plt.get_fignums():
-        fig = plt.figure(fig_num)
-        pdf.savefig(fig, bbox_inches="tight")
-        plt.close(fig)
 
-    pdf.close()
-
-
-
-def plot_allvar_dist(already_saved:bool=True):
+def plot_allvar_dist(already_saved:bool=True, save_fig:bool=False):
 
     allsets=get_sets(already_saved=already_saved)
     sets=list(allsets.values())
@@ -150,9 +162,6 @@ def plot_allvar_dist(already_saved:bool=True):
     
     vars=[st.get_var_names() for st in sets]
     vars_shared=[var for var in vars[0] if all(var in sublist for sublist in vars)]
-
-    pdf_filename = save_dir_plots+'histograms.pdf'
-    pdf = PdfPages(pdf_filename)
     prep.plot_hist([allsets["prompt"],allsets["nonprompt"],allsets["bckg_data"]], vars_to_draw=vars_shared,leg_labels=["prompt", "nonprompt","bckg_data"],fs=(15,10),alpha=0.3)
 
     colors=sns.color_palette(n_colors=len(set_names))
@@ -163,96 +172,105 @@ def plot_allvar_dist(already_saved:bool=True):
         print(set_names[i])
         prep.plot_hist(sets[i], vars_to_draw=vars_shared+["fGenPt","fGenCt","fGenRadius"],leg_labels=set_names[i], fs=(15,10) ,alpha=0.3,colors=colors[i])
 
-    for fig_num in plt.get_fignums():
-        fig = plt.figure(fig_num)
-        pdf.savefig(fig, bbox_inches="tight")
-        plt.close(fig)
-    pdf.close()
+    if save_fig:
+        pdf_filename = save_dir_plots+'histograms.pdf'
+        pdf = PdfPages(pdf_filename)
+        for fig_num in plt.get_fignums():
+            fig = plt.figure(fig_num)
+            pdf.savefig(fig, bbox_inches="tight")
+            plt.close(fig)
+        pdf.close()
+    else:
+        plt.show()
 
-def plot_some_dist(sets:Sequence[TreeHandler], to_plot:Sequence[str],labels:Sequence[str], file_name:str="output_someDist.pdf",severalpages:bool=False,no_bins:int=100):
 
-    pdf_filename = save_dir_plots+file_name
-    pdf = PdfPages(pdf_filename)
+def plot_some_dist(sets:Sequence[TreeHandler], to_plot:Sequence[str],labels:Sequence[str], file_name:str="output_someDist.pdf",severalpages:Union[int,None]=None,no_bins:int=100,save_fig:bool=False, logy:bool=True):
+
     if severalpages:
         colors=sns.color_palette(n_colors=len(sets))
-        prep.plot_hist(sets, vars_to_draw=to_plot,fs=(15,10),leg_labels=labels,alpha=0.3,colors=colors,no_bins=no_bins)
+        if severalpages==2:
+            prep.plot_hist(sets, vars_to_draw=to_plot,fs=(15,10),leg_labels=labels,alpha=0.3,colors=colors,no_bins=no_bins,logy=logy)
         for set,lab,col in zip(sets,labels,colors):
-            prep.plot_hist(set, vars_to_draw=to_plot,fs=(15,10),leg_labels=lab,alpha=0.3,colors=col,no_bins=no_bins)
+            prep.plot_hist(set, vars_to_draw=to_plot,fs=(15,10),leg_labels=lab,alpha=0.3,colors=col,no_bins=no_bins,logy=logy)
     else:
-        prep.plot_hist(sets, vars_to_draw=to_plot,fs=(15,10),leg_labels=labels,alpha=0.3,no_bins=no_bins)
+        prep.plot_hist(sets, vars_to_draw=to_plot,fs=(15,10),leg_labels=labels,alpha=0.3,no_bins=no_bins,logy=logy)
+    
+    if save_fig:
+        pdf_filename = save_dir_plots+file_name
+        pdf = PdfPages(pdf_filename)
+        for fig_num in plt.get_fignums():
+            fig = plt.figure(fig_num)
+            pdf.savefig(fig, bbox_inches="tight")
+            plt.close(fig)
+        pdf.close()
+    else:
+        plt.show()
 
-    for fig_num in plt.get_fignums():
-        fig = plt.figure(fig_num)
-        pdf.savefig(fig, bbox_inches="tight")
-        plt.close(fig)
-    pdf.close()
-
-def plot_corr(already_saved:bool=True):
+def plot_corr(already_saved:bool=True, save_fig:bool=False):
 
     allsets=get_sets(already_saved=already_saved)
     sets=list(allsets.values())
     names=list(allsets.keys())
-
     vars=[st.get_var_names() for st in sets]
-    pdf_filename = save_dir_plots+"corr.pdf"
-    pdf = PdfPages(pdf_filename)
     for st, variables, nm in zip(sets, vars, names):
         plot_utils.plot_corr([st], columns=variables, labels=[nm])
-    for fig_num in plt.get_fignums():
-        fig = plt.figure(fig_num)
-        pdf.savefig(fig, bbox_inches="tight")
-        plt.close(fig)
-    pdf.close()
+    if save_fig:
+        pdf_filename = save_dir_plots+"corr.pdf"
+        pdf = PdfPages(pdf_filename)
+        for fig_num in plt.get_fignums():
+            fig = plt.figure(fig_num)
+            pdf.savefig(fig, bbox_inches="tight")
+            plt.close(fig)
+        pdf.close()
+    else:
+        plt.show()
 
 
-def plot_some_corr(sets:Sequence[TreeHandler],  labels:Sequence[str], to_plot:Union[Sequence[str],None]=None,file_name:str="output_someCorr.pdf"):
+def plot_some_corr(sets:Sequence[TreeHandler],  labels:Sequence[str], to_plot:Union[Sequence[str],None]=None,file_name:str="output_someCorr.pdf",save_fig:bool=False):
 
-    
-    pdf_filename = save_dir_plots+file_name
-    pdf = PdfPages(pdf_filename)
     if to_plot:
         plot_utils.plot_corr(sets,columns=to_plot,labels=labels)
     else:
         for st, lab in zip(sets, labels):
             cols=[var for var in st.get_var_names()]
             plot_utils.plot_corr([st],columns=cols,labels=[lab])
-    for fig_num in plt.get_fignums():
-        fig = plt.figure(fig_num)
-        pdf.savefig(fig, bbox_inches="tight")
-        plt.close(fig)
-    pdf.close()
+    if save_fig:
+        pdf_filename = save_dir_plots+file_name
+        pdf = PdfPages(pdf_filename)
+        for fig_num in plt.get_fignums():
+            fig = plt.figure(fig_num)
+            pdf.savefig(fig, bbox_inches="tight")
+            plt.close(fig)
+        pdf.close()
+    else:
+        plt.show()
+
+def plot_2dhist_numpy(sets:Sequence[TreeHandler], set_names:Sequence[str],varsx:Sequence[str], varsy:Sequence[str], pdf_name:str="some_2dhist_numpy.pdf",binsx:int=10,binsy:int=10,cuts:Union[str,None]=None,save_pdf:bool=False):
 
 
-def plot_2dhist_numpy(already_saved:bool=True):
-
-    allsets=get_sets(already_saved=already_saved)
-    sets=list(allsets.values())
-    set_names=list(allsets.keys())
-
-    l1=["fDcaV0PV", "fCosPA"]
-    l2=["fCt","fPt"]
-
-    pdf_filename = save_dir_plots+'histograms2d_numpy.pdf'
-    pdf = PdfPages(pdf_filename)
+    l1=varsx
+    l2=varsy
 
     for (i,name) in zip(sets,set_names):
         fig,ax=plt.subplots(len(l1),len(l2),figsize=(10,10))
         for ax_i, tu in zip(ax.T.flatten(),list(itertools.product(l1, l2))):
             prep.plot_2dhist_numpy(i,tu[0],tu[1],ax=ax_i)
             ax_i.set(xlabel=tu[0],ylabel=tu[1])
-            if tu[0]=="fCosPA":
-                ax_i.set_xlim(0.995,1)
         ax[0][0].set_title(name+f", size of sample: {prep.get_sampleSize(i)}", fontsize=20)
+    if save_pdf:
+        pdf_filename = save_dir_plots+'histograms2d_numpy.pdf'
+        pdf = PdfPages(pdf_filename)    
+        for fig_num in plt.get_fignums():
+            fig = plt.figure(fig_num)
+            pdf.savefig(fig, bbox_inches="tight")
+            plt.close(fig)
+        pdf.close()
+    else:
+        plt.show()
 
-    for fig_num in plt.get_fignums():
-        fig = plt.figure(fig_num)
-        pdf.savefig(fig, bbox_inches="tight")
-        plt.close(fig)
-    pdf.close()
 
 
-
-def plot_2dhist_root(file_names:Sequence[str], set_names:Sequence[str], varsx:Sequence[str], varsy:Sequence[str], pdf_name:str="some_2dhist.pdf",binsx:int=10,binsy:int=10,cuts:Union[str,None]=None):
+def plot_2dhist_root(file_names:Sequence[str], set_names:Sequence[str], varsx:Sequence[str], varsy:Sequence[str], pdf_name:str="some_2dhist.pdf",binsx:int=10,binsy:int=10,cuts:Union[str,None]=None,save_pdf:bool=False, save_file:bool=False):
 
     tree="tree"
     dir_result=directory_hists
@@ -266,10 +284,13 @@ def plot_2dhist_root(file_names:Sequence[str], set_names:Sequence[str], varsx:Se
         for tu in list(itertools.product(l1, l2)):
             print(tu)
             hname=f"{tu[0]}_{tu[1]}"
-            prep.plot_2dhist_root(file=fname,  var1=tu[0], var2=tu[1], save_name_file=save_dir, hist_name=hname, save_name_pdf=dir_result+f"{hname}.pdf",title=f"{sname}: {tu[0]} {tu[1]}",binsx=binsx,binsy=binsy,cuts=cuts)
-            pdflist.append(dir_result+f"{hname}.pdf")
-
-    prep.merge_pdfs(pdf_list=pdflist,output_path=dir_result+pdf_name)
+            if save_pdf:
+                prep.plot_2dhist_root(file=fname,  var1=tu[0], var2=tu[1], save_name_file=save_dir, hist_name=hname, save_name_pdf=dir_result+f"{hname}.pdf",title=f"{sname}: {tu[0]} {tu[1]}",binsx=binsx,binsy=binsy,cuts=cuts,save_file=save_file)
+                pdflist.append(dir_result+f"{hname}.pdf")
+            else: 
+                prep.plot_2dhist_root(file=fname,  var1=tu[0], var2=tu[1], save_name_file=save_dir, hist_name=hname,title=f"{sname}: {tu[0]} {tu[1]}",binsx=binsx,binsy=binsy,cuts=cuts,save_file=save_file)
+    if save_pdf:
+        prep.merge_pdfs(pdf_list=pdflist,output_path=dir_result+pdf_name)
 
 def plot_projection(set_name:str, hist_name:str,axis:int=0, pdfname:str="projection.pdf"):
     fname=directory_hists+set_name+".root"
@@ -350,7 +371,7 @@ def plot_chrystalball_fit(x_min_fit:float=1.086,x_max_fit:float=1.14,x_min_data:
     prep.fit_chrystalball(file_name=file_directory_data,tree_name=tree_data,save_name_file=snf,save_name_pdf=pdfname,x_max_data=x_max_data,x_min_data=x_min_data,x_max_fit=x_max_fit,x_min_fit=x_min_fit,var=var,no_bins=nobins,cheb=cheb,save_file=save_file,logy=logy)
 
 
-def crystalball_fit_seperatedbins(branch1:str="fMass", branch2:str="fPt", n_branch1:int=250, min_val_branch1:float=1.08, max_val_branch1:float=1.8, min_val_branch2:float=0.3,  max_val_branch2:float=4, binwidth_branch2:float=0.1, save_file:bool=False, hist2d_saved:bool=True,cheb:bool=False,logy:bool=True, save_pdf:bool=True):
+def crystalball_fit_seperatedbins(branch1:str="fMass", branch2:str="fPt", n_branch1:int=250, min_val_branch1:float=1.08, max_val_branch1:float=1.8, min_val_branch2:float=0.3,  max_val_branch2:float=4, binwidth_branch2:float=0.1, save_file:bool=False, hist2d_saved:bool=True,cheb:bool=False,logy:bool=True, save_pdf:bool=True, with_cut:bool=False):
 
     newbins=[0.5,1,1.5,2,2.5,3,4]
 
@@ -360,27 +381,52 @@ def crystalball_fit_seperatedbins(branch1:str="fMass", branch2:str="fPt", n_bran
         else:
             n=int((max_val_branch2-min_val_branch2)/binwidth_branch2)
         print("n_bins= ", n)
-        prep.plot_2dhist_root(file=file_directory_data, save_name_file=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/hist2d.root", var2=branch2, var1=branch1, hist_name=f"2dhist_{branch1}_{branch2}", title=f"2dhist_{branch1}_{branch2}" ,binsx=n_branch1, binsy=n, miny=min_val_branch2, maxy=max_val_branch2, minx=1.07, maxx=1.18)
-        prep.new_bin_edges(file_name=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/hist2d.root",hist_name=f"2dhist_{branch1}_{branch2}",new_bins=newbins, reb_y=True)
-        prep.add_projection(file_name=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/hist2d.root",hist_name=f"rebinned_hist",axis=0)
-        prep.create_1d_histograms_from_2d(file_name=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/hist2d.root",hist_name="rebinned_hist",already_saved=False )
-    
+        if with_cut:
+            cut=str(input("Enter the cut: "))
+            name_cut=str(input("Enter name of the cut: "))
+
+            prep.plot_2dhist_root(file=file_directory_data, save_name_file=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/hist2d_{name_cut}.root", var2=branch2, var1=branch1, hist_name=f"2dhist_{branch1}_{branch2}", title=f"2dhist_{branch1}_{branch2}" ,binsx=n_branch1, binsy=n, miny=min_val_branch2, maxy=max_val_branch2, minx=1.07, maxx=1.18,cuts=cut)
+            prep.new_bin_edges(file_name=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/hist2d_{name_cut}.root",hist_name=f"2dhist_{branch1}_{branch2}",new_bins=newbins, reb_y=True)
+            prep.add_projection(file_name=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/hist2d_{name_cut}.root",hist_name=f"rebinned_hist",axis=0)
+            prep.create_1d_histograms_from_2d(file_name=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/hist2d_{name_cut}.root",hist_name="rebinned_hist",already_saved=False )
+        else:
+            prep.plot_2dhist_root(file=file_directory_data, save_name_file=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/hist2d.root", var2=branch2, var1=branch1, hist_name=f"2dhist_{branch1}_{branch2}", title=f"2dhist_{branch1}_{branch2}" ,binsx=n_branch1, binsy=n, miny=min_val_branch2, maxy=max_val_branch2, minx=1.07, maxx=1.18)
+            prep.new_bin_edges(file_name=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/hist2d.root",hist_name=f"2dhist_{branch1}_{branch2}",new_bins=newbins, reb_y=True)
+            prep.add_projection(file_name=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/hist2d.root",hist_name=f"rebinned_hist",axis=0)
+            prep.create_1d_histograms_from_2d(file_name=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/hist2d.root",hist_name="rebinned_hist",already_saved=False )
+    else:
+        if with_cut:
+            name_cut=str(input("Enter name of the cut: "))        
     histograms=[]
-    file = ROOT.TFile(f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/hist2d.root")
+    if with_cut:
+        file = ROOT.TFile(f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/hist2d_{name_cut}.root")
+    else:
+        file = ROOT.TFile(f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/hist2d.root")
     for i in range(1,len(newbins)):
         hist = file.Get(f"hist_ybin_{i}")
         histograms.append(hist)
     pdflist=[]
     for i in range(len(histograms)):
         if save_pdf:
-            pdfname=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/perPtbin/{branch2}Fit_{branch1}bin_{i}.pdf"
-            pdfname_manuel=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/perPtbin/{branch2}Fit_{branch1}bin_{i}_manuel.pdf"
-            pdflist.append(pdfname)
+            if with_cut:
+                pdfname=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/perPtbin_cutted/{branch2}Fit_{name_cut}_{branch1}bin_{i}.pdf"
+                pdfname_manuel=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/perPtbin_cutted/{branch2}Fit_{name_cut}_{branch1}bin_{i}_manuel.pdf"
+                pdflist.append(pdfname)
+                pdfname_final=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/perPtbin_cutted/fits_perPtBin_{name_cut}.pdf"
+            else:
+                pdfname=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/perPtbin/{branch2}Fit_{branch1}bin_{i}.pdf"
+                pdfname_manuel=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/perPtbin/{branch2}Fit_{branch1}bin_{i}_manuel.pdf"
+                pdflist.append(pdfname)
+                pdfname_final=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/perPtbin/fits_perPtBin.pdf"
         else: 
             pdfname=False
-        snf=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/perPtbin/{branch2}Fit_{branch1}bin_{i}.root"
+        if with_cut:
+            snf=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/perPtbin_{name_cut}/{branch2}Fit_{branch1}bin_{i}.root"
+        else:
+            snf=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/perPtbin/{branch2}Fit_{branch1}bin_{i}.root"
         prep.fit_chrystalball(file_name=file_directory_data, tree_name=tree_data, save_name_file=snf,  save_name_pdf=pdfname, hist_given=histograms[i], x_max_data=max_val_branch1,x_min_data=min_val_branch1,x_max_fit=1.14,x_min_fit=1.086,var=branch1,cheb=cheb,save_file=save_file,logy=logy, title=f"Fit for Pt bin [{newbins[i]},{newbins[i+1]}] GeV")
-    prep.merge_pdfs(pdf_list=pdflist,output_path=f"/home/katrin/Cern_summerProject/crystalball_fits/set_{no_set}/perPtbin/fits_perPtBin.pdf")
+    if save_pdf:
+        prep.merge_pdfs(pdf_list=pdflist,output_path=pdfname_final)
 
 
 def analysis_cutted_subsets(already_saved:bool=True, onlynewMC:bool=False):
@@ -392,8 +438,7 @@ def analysis_cutted_subsets(already_saved:bool=True, onlynewMC:bool=False):
     for nm in set_names:
         files[nm]=directory_sets+nm+".root"
     vars=[st.get_var_names() for st in sets]
-    vars_MC=list(allsets["bckg_MC_masscut"].get_var_names())
-
+    vars_MC=list(allsets["bckg_MC"].get_var_names())
     vars_shared=[var for var in vars[0] if all(var in sublist for sublist in vars)]
 
 
@@ -438,30 +483,39 @@ def analysis_cutted_subsets(already_saved:bool=True, onlynewMC:bool=False):
 #    plot_2dhist_root(file_names=["/home/katrin/Cern_summerProject/data/AO2D_data_new.root"],set_names=["data"], varsx=["fMass"],varsy=["fCosPA","fPt"],pdf_name="2dhistdata.pdf",bins=500,folders=True)
  #   plot_3dhist_root(file_names=["/home/katrin/Cern_summerProject/data/AO2D_data_new.root"],set_names=["data"], varsx=["fMass"],varsy=["fCosPA"],varsz=["fPt"],pdf_name="3dhistdata.pdf",binsx=100,binsy=100,binsz=100,folders=True)
     #plot_projection(set_name="data", hist_name="data_fMass_fCosPA;2",axis=0,pdfname="projection_fCosPA.pdf")
-    bad_bckg_MC=prep.cut_data(data=allsets["bckg_MC_masscut"],var="trainBckgMC_masscut_class0", upper_cut=0.8)
-    good_bckg_MC=prep.cut_data(data=allsets["bckg_MC_masscut"],var="trainBckgMC_masscut_class0", lower_cut=0.8)
+    #bad_bckg_MC=prep.cut_data(data=allsets["bckg_MC_masscut"],var="trainBckgMC_masscut_class0", upper_cut=0.8)
+    #good_bckg_MC=prep.cut_data(data=allsets["bckg_MC_masscut"],var="trainBckgMC_masscut_class0", lower_cut=0.8)
 
-    plot_some_dist(sets=[bad_bckg_MC,good_bckg_MC], to_plot=vars_shared+["trainBckgMC_masscut_class0"], labels=["bad_bckg_MC","good_bckg_MC"],file_name="dist_bad_good_bkg.pdf",severalpages=True)
+    #plot_some_dist(sets=[bad_bckg_MC,good_bckg_MC], to_plot=vars_shared+["trainBckgMC_masscut_class0"], labels=["bad_bckg_MC","good_bckg_MC"],file_name="dist_bad_good_bkg.pdf",severalpages=True)
     #plot_some_dist(sets=[allsets["bckg_MC_masscut_radiuscut"],allsets["nonprompt_radiuscut"],allsets["prompt_radiuscut"]],to_plot=vars_shared,labels=["bkcg_MC_masscut_radiuscut","nonprompt_radiuscut","prompt_radiuscut"], file_name="distr_cuttedRadius.pdf")
 
-    ##data=prep.get_rawdata(file_directory_data=file_directory_data,tree_data=tree_data,folder_name=fname)
-    #leftside_band=prep.cut_data(data=data, var="fMass", upper_cut=1.1)
-    #signal=prep.cut_data(data=data, var="fMass", lower_cut=1.11, upper_cut=1.1208)
-    #rightside_band=prep.cut_data(data=data, var="fMass", lower_cut=1.13)
-    #prep.save_sets(sets=[ rightside_band], set_names=["rightside_band"],dir_tree=directory_sets)
-    #cut="fCosPA > 0.999 && fMass > 1.1 && fMass < 1.1208"
+    #mc=prep.get_rawMC_data(file_directory_mc=file_directory_mc,tree_mc=tree_mc,folder_name=fname)
+    #data=prep.get_rawdata(file_directory_data=file_directory_data,tree_data=tree_data,folder_name=fname)
+
+    #leftsideband_MC=prep.cut_data(data=data, var="fMass", upper_cut=1.1)
+    #signal_MC=prep.cut_data(data=data, var="fMass", lower_cut=1.11, upper_cut=1.1208)
+    #rightsideband_MC=prep.cut_data(data=data, var="fMass", lower_cut=1.13)
+    #bump_MC=prep.cut_data(data=allsets["bckg_MC"], var="fMass", lower_cut=1.13,upper_cut=1.16)
+    #prep.save_sets(sets=[leftsideband_MC,rightsideband_MC,signal_MC], set_names=["leftsideband_MC","rightsideband_MC","signal_MC"],dir_tree=directory_sets)
+    #cut="fMass < 1.1 && fMass > 1.1208 && fQtAp < 0.12"
+
     #cut="fCosPA> 0.999"
     #plot_2dhist_root(file_names=[file_directory_data], set_names=["signal"],varsx=["fAlphaAP"],varsy=["fQtAP"],pdf_name=f"Armenteros_signal.pdf",binsx=200,binsy=200,cuts=cut)
-    #for name in ["rightside_band", "leftside_band"]:
-    #    plot_2dhist_root(file_names=[files[name]], set_names=[name],varsx=["fAlphaAP"],varsy=["fQtAP"],pdf_name=f"Armenteros_{name}.pdf",bins=200)
-        #plot_2dhist_root(file_names=[files[name]], set_names=[name],varsx=["fAlphaAP"],varsy=["fQtAP"],pdf_name=f"2d_hist_codedauneg_matchsecmoth_{name}.pdf",bins=100)
-        #plot_2dhist_root(file_names=[files[name]], set_names=[name],varsx=["fAlphaAP"],varsy=["fQtAP"],pdf_name=f"2d_hist_codedaupos_matchsecmoth_{name}.pdf",bins=100)
+    #for name in ["rightsideband_MC", "leftsideband_MC","signal_MC"]:
+    #    files[name]=directory_sets+name+".root"
+    #    plot_2dhist_root(file_names=[files[name]], set_names=[name],varsx=["fAlphaAP"],varsy=["fQtAP"],pdf_name=f"Armenteros_{name}.pdf",binsx=100, binsy=100)
+    #plot_some_dist(sets=[allsets["bump_MC"]],to_plot=vars_MC, labels=["bump_MC"], file_name="dist_Massbump_MC.pdf")
 
-analysis_cutted_subsets()
+    #exp_NOmassBump_data=prep.cut_data(data=data, var="fQtAP", upper_cut=0.12)
+    #plot_some_dist(sets=[data,exp_NOmassBump_data], to_plot=["fMass"], labels=["data","data_ArmenterosNOK0_region"])
+    #data=prep.get_rawdata(file_directory_data=file_directory_data, tree_data=tree_data, folder_name=fname)
+    #plot_some_dist(sets=[allsets["bckg_MC"],data], to_plot="fMass",labels=["bckg_MC","data"],severalpages=1)
+#analysis_cutted_subsets(already_saved=True, onlynewMC=True)
+#get_sets(already_saved=True, onlynewMC=True)
 #plot_bck_cuts() 
-
+#analysis_cutted_subsets()
 
 #plot_chrystalball_fit( savepdf=True,cheb=True,logy=True)
 #plot_chrystalball_fit( savepdf=True,cheb=False,logy=True)
-#crystalball_fit_seperatedbins(hist2d_saved=True,cheb=True)
+#crystalball_fit_seperatedbins(hist2d_saved=True,cheb=True,with_cut=True)
 #plot_2dhist_root(file_names=[file_directory_data])

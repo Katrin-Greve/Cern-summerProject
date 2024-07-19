@@ -11,7 +11,7 @@ import awkward as ak
 import PyPDF2
 import os
 import seaborn as sns
-from ROOT import RooFit, RooRealVar, RooDataSet, RooArgList, RooAddPdf, RooPlot, RooArgList, RooPolynomial, RooDataHist, RooHist
+from ROOT import RooFit, RooRealVar, RooDataSet, RooArgList, RooAddPdf, RooPlot, RooArgList, RooPolynomial, RooDataHist, RooHist, TCanvas
 import sys
 import io
 
@@ -113,6 +113,7 @@ def get_rawdata(file_directory_data:str, tree_data:str, folder_name:Union[str,No
     """
     data=TreeHandler(file_directory_data, tree_data, folder_name=folder_name)
     return data
+
 
 # Function to get a TreeHandler containing the Monte Carlo data from a .root file
 def get_rawMC_data(file_directory_mc:str, tree_mc:str,folder_name:Union[str,None]=None)->TreeHandler:
@@ -502,9 +503,9 @@ def find_closest_float_position(array, target):
 #######################
 
 # Function to plot a histogram of a Treehandler object (or a Sequence of TreeHandler)
-def plot_hist(to_plot:Union[TreeHandler,Sequence[TreeHandler]], vars_to_draw:Sequence[str], leg_labels:Union[Sequence[str],str], no_bins:int=100,  fs:Union[tuple,None]=(10,7), alpha:Union[float, None]=0.3, colors=None):
+def plot_hist(to_plot:Union[TreeHandler,Sequence[TreeHandler]], vars_to_draw:Sequence[str], leg_labels:Union[Sequence[str],str], no_bins:int=100,  fs:Union[tuple,None]=(10,7), alpha:Union[float, None]=0.3, colors=None, logy:bool=True):
     
-    plot_utils.plot_distr(to_plot, vars_to_draw, bins=no_bins, labels=leg_labels, log=True, density=True, figsize=fs, alpha=alpha, grid=False,colors=colors)
+    plot_utils.plot_distr(to_plot, vars_to_draw, bins=no_bins, labels=leg_labels, log=logy, density=True, figsize=fs, alpha=alpha, grid=False,colors=colors)
     plt.subplots_adjust(left=0.06, bottom=0.06, right=0.99, top=0.96, hspace=0.55, wspace=0.55)
 
 # Plots a fitted distribuition (at this point only Gauss) to a given TreeHandler columns 
@@ -621,7 +622,7 @@ def plot_2dhist_numpy(data:TreeHandler, var1:str, var2:str,ax, bin:int=100, cmap
 
 
 # Function to draw and save a 2d histogram using ROOT
-def plot_2dhist_root(file:str,  var1:str, var2:str, save_name_file:str, hist_name:str, title:str, save_name_pdf:Union[str,None]=None ,binsx:int=7,binsy:int=7,cmap=ROOT.kRainbow, minx:float=0, maxx:float=0, miny:float=0 , maxy:float=0,cuts:Union[str,None]=None):
+def plot_2dhist_root(file:str,  var1:str, var2:str, save_name_file:str, hist_name:str, title:str, save_name_pdf:Union[str,None]=None ,binsx:int=7,binsy:int=7,cmap=ROOT.kRainbow, minx:float=0, maxx:float=0, miny:float=0 , maxy:float=0,cuts:Union[str,None]=None, save_file:bool=False):
     """
     Plot a 2 dimensional histogram using ROOT. Saves the histogram as pdf and as a .root file.
 
@@ -673,18 +674,19 @@ def plot_2dhist_root(file:str,  var1:str, var2:str, save_name_file:str, hist_nam
     hist.SetXTitle(var1)
     hist.SetYTitle(var2)
     ROOT.gPad.SetLogz(1)
-
+    canvas.Draw()
     # Save the canvas as an image file if needed
     if save_name_pdf:
         canvas.SaveAs(save_name_pdf)
         canvas.Close()
     # Create a new ROOT file to save the histogram
-    if os.path.exists(save_name_file):
-        output_file = ROOT.TFile(save_name_file, "UPDATE")
-    else:
-        output_file = ROOT.TFile(save_name_file, "RECREATE")
-    hist.Write()
-    output_file.Close()
+    if save_file:
+        if os.path.exists(save_name_file):
+            output_file = ROOT.TFile(save_name_file, "UPDATE")
+        else:
+            output_file = ROOT.TFile(save_name_file, "RECREATE")
+        hist.Write()
+        output_file.Close()
 
 def add_projection(file_name:str, hist_name:str, save_name_pdf:Union[str,None]=None, axis:int=0):
 
@@ -858,7 +860,7 @@ def find_trees(directory, path=""):
     return trees
 
 
-def fit_chrystalball(save_name_file:str,hist_given:Union[ROOT.TH1F, None]=None,file_name:Union[str,None]=None,tree_name:Union[str,None]=None,save_name_pdf:Union[str,None]=None, var:str="fMass",save_file:bool=True,x_min_fit:float=1.086,x_max_fit:float=1.14,x_min_data:float=1.05,x_max_data:float=1.16,no_bins:int=100,title:str="crystalball+background fit",cheb:bool=False, logy:bool=True,n_sig:float=4):
+def fit_chrystalball(save_name_file:str,hist_given:Union[ROOT.TH1F, None]=None,file_name:Union[str,None]=None,tree_name:Union[str,None]=None,save_name_pdf:Union[str,None]=None, var:str="fMass",save_file:bool=True,x_min_fit:float=1.086,x_max_fit:float=1.14,x_min_data:float=1.05,x_max_data:float=1.16,no_bins:int=100,title:str="crystalball+background fit",cheb:bool=False, logy:bool=True,n_sig:float=4, fixed_cbParams:bool=False):
 
 
     # Create a ROOT application
@@ -905,15 +907,17 @@ def fit_chrystalball(save_name_file:str,hist_given:Union[ROOT.TH1F, None]=None,f
         data = RooDataHist("data_hist", "RooDataHist from TH1", RooArgList(x), hist_given)
         #mean = RooRealVar("mean", "mean of gaussian", 1.1155, 1.115, 1.116)
         #sigma = RooRealVar("sigmaLR", "width of gaussian", 0.001, 0.00001, 0.01)
-        #alphaL = RooRealVar("alphaL", "alphaL", 1.38, 1, 10)
-        #nL = RooRealVar("nL", "nL", 1, 0.01, 10)
-        #alphaR = RooRealVar("alphaR", "alphaR", 1, 0.5, 10)
-        #nR = RooRealVar("nR", "nR", 9, 0.01, 10)
+        alphaL_fixed = RooRealVar("alphaL", "alphaL", 1.3197)
+        nL_fixed = RooRealVar("nL", "nL", 6.7180)
+        alphaR_fixed = RooRealVar("alphaR", "alphaR",  1.1630)
+        nR_fixed = RooRealVar("nR", "nR", 9.6692)
         #Define the Crystal Ball function
         #crystal_ball = ROOT.RooCrystalBall("crystal_ball", "Crystal Ball PDF", x, mean, sigma, alphaL, nL,alphaR, nR)
         mean, sigma, alphaL, nL, alphaR, nR = fit_chrystalball_manuel(file_name=None, hist_given=hist_given)
-        crystal_ball = ROOT.RooCrystalBall("crystal_ball", "Crystal Ball PDF", x, mean, sigma, alphaL, nL,alphaR, nR)
-
+        if fixed_cbParams:
+            crystal_ball = ROOT.RooCrystalBall("crystal_ball", "Crystal Ball PDF", x, mean, sigma, alphaL_fixed, nL_fixed,alphaR_fixed, nR_fixed)
+        else:
+            crystal_ball = ROOT.RooCrystalBall("crystal_ball", "Crystal Ball PDF", x, mean, sigma, alphaL, nL,alphaR, nR)
 
     if not cheb:   
         if not hist_given:
