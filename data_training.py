@@ -7,16 +7,10 @@ from hipe4ml.model_handler import ModelHandler
 from hipe4ml.tree_handler import TreeHandler
 from hipe4ml.analysis_utils import train_test_generator
 from hipe4ml import plot_utils
-from typing import Union, Sequence
+from typing import Union, Sequence, Tuple
 import preparing_data as prep
 from matplotlib.backends.backend_pdf import PdfPages
 
-
-
-no_set=5
-
-directory_sets=f"/home/katrin/Cern_summerProject/root_trees/set_{no_set}/"
-save_dir_plots=f"/home/katrin/Cern_summerProject/ml_plots/set_{no_set}/"
 
 def define_model(features_to_learn:Sequence[str]):
     model_clf = xgb.XGBClassifier()
@@ -24,7 +18,7 @@ def define_model(features_to_learn:Sequence[str]):
 
     return model_hdl
 
-def traindata_plotting(training_sets:Sequence[TreeHandler], set_names:Sequence[str],features_to_learn:Sequence[str]=["fDcaV0PV","fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion"], name_training:str="train0", equal_no_cand:bool=False, multi:bool=False, marg:bool=False, save_fig:bool=False):
+def trainmodel_plotting(training_sets:Sequence[TreeHandler], set_names:Sequence[str],directory_sets:str, save_dir_mlplots:str,features_to_learn:Sequence[str]=["fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion","fDcaV0PV","fCt","fEta"], name_training:str="train0", equal_no_cand:bool=False, multi:bool=False, marg:bool=False, save_fig:bool=False,fs:Tuple[float]=(10,4)):
 
     if not equal_no_cand:
         if multi:
@@ -52,12 +46,14 @@ def traindata_plotting(training_sets:Sequence[TreeHandler], set_names:Sequence[s
             st.apply_model_handler(model_handler=model,column_name=name_training+"_bdt",output_margin=marg)
         prep.get_root_from_TreeHandler(treehdl=st,output_name=name+".root",save_dir=directory_sets,treename="tree")
 
-    plot_bdt(train_test_data, model_hdl=model, marg=marg, save_fig=save_fig, filename=name_training+"_bdt.pdf",labels=set_names)
-    plot_roc(train_test_data=train_test_data, model_hdl=model,save_fig=save_fig,  filename=name_training+"_roc.pdf",multi=multi,labels=set_names)
-    plot_featimport(data=train_test_data,model=model,save_fig=save_fig,filename=name_training+"_featimp.pdf",multi=multi,labels=set_names)
+    plot_bdt(train_test_data, model_hdl=model,save_dir_mlplots=save_dir_mlplots, marg=marg, save_fig=save_fig, filename=name_training+"_bdt.pdf",labels=set_names)
+    plot_roc(train_test_data=train_test_data, model_hdl=model,save_dir_mlplots=save_dir_mlplots,save_fig=save_fig,  filename=name_training+"_roc.pdf",multi=multi,labels=set_names)
+    plot_featimport(data=train_test_data,model=model,save_dir_mlplots=save_dir_mlplots,save_fig=save_fig, filename=name_training+"_featimp.pdf",multi=multi,labels=set_names,figsize=fs)
+
+    return train_test_data, model
 
     
-def traindata(training_sets:Sequence[TreeHandler], set_names:Sequence[str],features_to_learn:Sequence[str]=["fDcaV0PV","fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion"], name_training:str="train0", equal_no_cand:bool=False,multi:bool=False,marg:bool=False,):
+def trainmodel(training_sets:Sequence[TreeHandler], set_names:Sequence[str],directory_sets:str,features_to_learn:Sequence[str]=["fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion","fDcaV0PV","fCt","fEta"], name_training:str="train0", equal_no_cand:bool=False,multi:bool=False,marg:bool=False,):
 
     if not equal_no_cand:
         if multi:
@@ -77,9 +73,9 @@ def traindata(training_sets:Sequence[TreeHandler], set_names:Sequence[str],featu
 
 
     model=define_model(features_to_learn=features_to_learn)
-    if not multi:
-        hyper_pars_ranges = {'n_estimators': (200, 1000), 'max_depth': (2, 4), 'learning_rate': (0.01, 0.1)}
-        model.optimize_params_optuna(train_test_data, hyper_pars_ranges, cross_val_scoring='roc_auc', timeout=120,n_jobs=-1, n_trials=100, direction='maximize')  
+    #if not multi:
+    #    hyper_pars_ranges = {'n_estimators': (200, 1000), 'max_depth': (2, 4), 'learning_rate': (0.01, 0.1)}
+    #    model.optimize_params_optuna(train_test_data, hyper_pars_ranges, cross_val_scoring='roc_auc', timeout=120,n_jobs=-1, n_trials=100, direction='maximize')  
 
     model.train_test_model(train_test_data,multi_class_opt="ovo")
     for st,name in zip(training_sets,set_names):
@@ -89,10 +85,10 @@ def traindata(training_sets:Sequence[TreeHandler], set_names:Sequence[str],featu
             st.apply_model_handler(model_handler=model,column_name=name_training+"_bdt",output_margin=marg)
         prep.get_root_from_TreeHandler(treehdl=st,output_name=name+".root",save_dir=directory_sets,treename="tree")
 
-    return train_test_data,model
+    return train_test_data, model
 
 
-def plot_roc(train_test_data, model_hdl:ModelHandler,labels:Sequence[str], save_fig:bool=True,filename:str="roc_ouput.pdf",multi:bool=False):
+def plot_roc(train_test_data, model_hdl:ModelHandler,labels:Sequence[str],save_dir_mlplots:str, save_fig:bool=True,filename:str="roc_ouput.pdf",multi:bool=False):
     
     y_pred_train = model_hdl.predict(train_test_data[0], False) #prediction for training data set
     y_pred_test = model_hdl.predict(train_test_data[2], False)  #prediction for test data set
@@ -102,17 +98,16 @@ def plot_roc(train_test_data, model_hdl:ModelHandler,labels:Sequence[str], save_
         plot_utils.plot_roc(train_test_data[3], y_pred_test, None,labels=labels)
     plt.show()
     if save_fig:
-        plt.savefig(save_dir_plots+filename)
+        plt.savefig(save_dir_mlplots+filename)
         plt.close()
 
 
-def plot_bdt(train_test_data, model_hdl:ModelHandler, labels:Sequence[str], marg:bool=False, save_fig:bool=True, filename:str="bdt_ouput.pdf"):
-
+def plot_bdt(train_test_data, model_hdl:ModelHandler, labels:Sequence[str],save_dir_mlplots:str, marg:bool=False, save_fig:bool=True, filename:str="bdt_ouput.pdf"):
 
     plot_utils.plot_output_train_test(model_hdl,train_test_data, bins=100,labels=labels ,density=True, output_margin=marg)
     plt.show()
     if save_fig:
-        pdf_filename = save_dir_plots+filename
+        pdf_filename = save_dir_mlplots+filename
         pdf = PdfPages(pdf_filename)
         for fig_num in plt.get_fignums():
             fig = plt.figure(fig_num)
@@ -120,50 +115,35 @@ def plot_bdt(train_test_data, model_hdl:ModelHandler, labels:Sequence[str], marg
             plt.close(fig)
         pdf.close()
 
-def plot_featimport(data:Sequence[Union[pd.DataFrame,np.array]],model:ModelHandler,labels:Sequence[str],save_fig:bool=False, filename:str="output_featimp.pdf",multi:bool=False):
+def plot_featimport(data:Sequence[Union[pd.DataFrame,np.array]],model:ModelHandler,labels:Sequence[str],save_dir_mlplots:str,save_fig:bool=False, filename:str="output_featimp.pdf",multi:bool=False,figsize:Tuple[float]=(10,3)):
 
 
-    plot_utils.plot_feature_imp(data[0],y_truth=data[1], model=model,labels=labels)
-    plot_utils.plot_feature_imp(data[2],y_truth=data[3], model=model,labels=labels)
+    figs=plot_utils.plot_feature_imp(data[0],y_truth=data[1], model=model,labels=labels)
+    for fig in figs:
+        fig.set_size_inches(figsize)
+    #plot_utils.plot_feature_imp(data[2],y_truth=data[3], model=model,labels=labels)
     plt.show()
         #plot_utils.plot_feature_imp(data[0],y_truth=data[1], model=model,labels=["bckg", "nonprompt","prompt"])
         #plot_utils.plot_feature_imp(data[2],y_truth=data[3], model=model,labels=["bckg", "nonprompt","prompt"])        
     if save_fig:
-        pdf_filename = save_dir_plots+filename
+        pdf_filename = save_dir_mlplots+filename
         pdf = PdfPages(pdf_filename)
         for fig_num in plt.get_fignums():
             fig = plt.figure(fig_num)
             pdf.savefig(fig, bbox_inches="tight")
             plt.close(fig)
-        pdf.close()    
+        pdf.close()
 
-#allsets=plotting.get_sets(already_saved=True, onlynewMC=True)
+def save_model(model: ModelHandler,file_name:str):
+    model.dump_model_handler(filename=file_name)
 
+def get_model(file_name:str):
+    model=ModelHandler()
+    model.load_model_handler(filename=file_name)
+    return model
 
-#bckg_MC_cuttedMass=prep.cut_data(data=allsets["bckg_MC"],var="fMass",lower_cut=1.09, upper_cut=1.13,inclusive=False)
-#bckg_MC_cuttedMass2=prep.cut_data(data=sets["bckg_MC"],var="fMass",lower_cut=1.09, upper_cut=1.15,inclusive=False)
+def model_prediction_data(model:ModelHandler, directory_data:str, tree_data:str="O2lambdatableml", fname:str="DF*", marg:bool=True):
+    data=prep.get_rawdata(file_directory_data=directory_data, tree_data=tree_data,folder_name=fname)
+    predictions=model.predict(data, output_margin=marg)
 
-#bckg_MC_cuttedRadius=prep.cut_data(data=allsets["bckg_MC"],var="fRadius",lower_cut=None, upper_cut=20)
-#bckg_MC_cuttedMassRadius=prep.cut_data(data=bckg_MC_cuttedMass, var="fRadius", lower_cut=None, upper_cut=20)
-#prompt_cuttedRadius=prep.cut_data(data=allsets["prompt"],var="fRadius",lower_cut=None, upper_cut=20)
-#nonprompt_cuttedRadius=prep.cut_data(data=allsets["nonprompt"],var="fRadius",lower_cut=None, upper_cut=20)
-#prep.save_sets(sets=[bckg_MC_cuttedMass,bckg_MC_cuttedMass2,bckg_MC_cuttedRadius, bckg_MC_cuttedMassRadius,prompt_cuttedRadius,nonprompt_cuttedRadius],set_names=["bckg_MC_cuttedMass","bckg_MC_cuttedMass2","bckg_MC_cuttedRadius","bckg_MC_cuttedMassRadius","prompt_cuttedRadius","nonprompt_cuttedRadius"],dir_tree=directory_sets)
-#prep.save_sets([bckg_MC_cuttedMass2],set_names=["bckg_MC_cuttedMass2"],dir_tree=directory_sets)
-#allsets=get_subsets(already_saved=True)
-
-
-
-#traindata_plotting([allsets["bckg_MC_cuttedRadius"],allsets["nonprompt_cuttedRadius"],allsets["prompt_cuttedRadius"]],set_names=["bckg_MC_cuttedRadius","nonprompt_cuttedRadius", "prompt_cuttedRadius"],name_training="trainBckgMC_cuttedRadius",features_to_learn=["fDcaV0PV","fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion"])
-#traindata_plotting([allsets["bckg_MC_cuttedMassRadius"],allsets["nonprompt_cuttedRadius"],allsets["prompt_cuttedRadius"]],set_names=["bckg_MC_cuttedMassRadius","nonprompt_cuttedRadius", "prompt_cuttedRadius"],name_training="trainBckgMC_cuttedMassRadius",features_to_learn=["fDcaV0PV","fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion"])
-#traindata_plotting([allsets["bckg_MC"],allsets["nonprompt"],allsets["prompt"]],set_names=["bckg_MC","nonprompt", "prompt"],name_training="trainBckgMC_withall",features_to_learn=["fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion","fDcaV0PV","fCt", "fRadius","fEta","fTpcNsigmaProton", "fTpcNsigmaPion"])
-
-
-#traindata([allsets["bckg_MC"],allsets["nonprompt"],allsets["prompt"]],set_names=["bckg_MC","nonprompt", "prompt"],name_training="trainBckgMC")
-
-#bckg_MC_leftsideband=prep.cut_data(data=allsets["bckg_MC_radiuscut"],var="fMass", upper_cut=1.1)
-#prompt_radiuscut=prep.cut_data(data=allsets["nonprompt"],var="fRadius", upper_cut=40)
-#nonprompt_radiuscut=prep.cut_data(data=allsets["prompt"], var="fRadius", upper_cut=40)
-
-#bckg_MC_radiuscut=prep.cut_data(data=allsets["bckg_MC"], var="fRadius", upper_cut=40)
-#traindata_plotting([allsets["nonprompt"],allsets["prompt"]],set_names=["nonprompt", "prompt"],name_training="trainBckgMC_dual",features_to_learn=["fDcaV0PV","fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion","fCt"],multi=False)
-#traindata_plotting([allsets["nonprompt"],allsets["prompt"]],set_names=["nonprompt", "prompt"],name_training="train_dual",features_to_learn=["fCosPA","fDcaV0Tracks","fDcaPVProton","fDcaPVPion","fDcaV0PV","fCt","fEta"],multi=False)
+    return predictions

@@ -8,7 +8,6 @@ from scipy import optimize
 import ROOT
 import uproot
 import awkward as ak
-import PyPDF2
 import os
 import seaborn as sns
 from ROOT import RooFit, RooRealVar, RooDataSet, RooArgList, RooAddPdf, RooPlot, RooArgList, RooPolynomial, RooDataHist, RooHist, TCanvas
@@ -111,7 +110,7 @@ def get_rawdata(file_directory_data:str, tree_data:str, folder_name:Union[str,No
     Returns:
         TreeHandler: The TreeHandler object containing the data
     """
-    data=TreeHandler(file_directory_data, tree_data, folder_name=folder_name)
+    data=add_Radius(proton_pion_division(TreeHandler(file_directory_data, tree_data, folder_name=folder_name)))
     return data
 
 
@@ -344,22 +343,7 @@ def get_base_sets(file_directory_data:str, tree_data:str, file_directory_mc:str,
 
     return prompt, nonprompt, bckg_data, bckg_MC
 
-# Function to save the desired subsets
-def save_sets(sets:Sequence[TreeHandler],set_names:Sequence[str], dir_tree:str,tree:str="tree"):
-    '''
-    Parameters:
-        sets(Sequence[TreeHandler]): sets, to eb stored
-        set_names (Sequence[str]): names of the sets
-        dir_tree (str): direction, in which the output .root files will be saved
-        tree (str): Name of the tree in which the output will be saved. Default to "tree"
-        no_set (int): no. of used data set.
-    '''
-    if type(sets)!=list:
-        sets=[sets]
-    if type(set_names)!=list:
-        set_names=set_names
-    for (i,name) in zip(sets,set_names):
-        get_root_from_TreeHandler(treehdl=i, save_dir=dir_tree, output_name=f"{name}.root",treename=tree)
+
 
 
 #################################
@@ -503,10 +487,28 @@ def find_closest_float_position(array, target):
 #######################
 
 # Function to plot a histogram of a Treehandler object (or a Sequence of TreeHandler)
-def plot_hist(to_plot:Union[TreeHandler,Sequence[TreeHandler]], vars_to_draw:Sequence[str], leg_labels:Union[Sequence[str],str], no_bins:int=100,  fs:Union[tuple,None]=(10,7), alpha:Union[float, None]=0.3, colors=None, logy:bool=True):
+def plot_hist(to_plot:Union[TreeHandler,Sequence[TreeHandler]], vars_to_draw:Sequence[str], leg_labels:Union[Sequence[str],str], no_bins:int=100,  fs:Union[tuple,None]=(10,7), alpha:Union[float, None]=0.3, colors=None, logy:bool=True,fontsize:int=20):
     
-    plot_utils.plot_distr(to_plot, vars_to_draw, bins=no_bins, labels=leg_labels, log=logy, density=True, figsize=fs, alpha=alpha, grid=False,colors=colors)
+    ax=plot_utils.plot_distr(to_plot, vars_to_draw, bins=no_bins, labels=leg_labels, log=logy, density=True, figsize=fs, alpha=alpha, grid=False,colors=colors)
+    if len(vars_to_draw)>1:
+        for ax_i, var in zip(ax,vars_to_draw):
+            legend = ax_i.get_legend()
+            if legend:
+                for label in legend.get_texts():
+                    label.set_fontsize(fontsize)
+            ax_i.set_xlabel(var,fontsize=fontsize)
+            ax_i.set_ylabel("Counts",fontsize=fontsize)
+            ax_i.set_title("")
+    else:
+        legend = ax.get_legend()
+        if legend:
+            for label in legend.get_texts():
+                label.set_fontsize(fontsize)
+        ax.set_xlabel(vars_to_draw[0],fontsize=fontsize)
+        ax.set_ylabel("Counts",fontsize=fontsize)
+        ax.set_title("")
     plt.subplots_adjust(left=0.06, bottom=0.06, right=0.99, top=0.96, hspace=0.55, wspace=0.55)
+    return ax
 
 # Plots a fitted distribuition (at this point only Gauss) to a given TreeHandler columns 
 def plot_dist_fit(data:TreeHandler, var:str, par:list , no_bins:int=100 ,fitting_range:list=[45,55], cuts:Union[tuple,None]=None,dist:Union[str,None]="Gauss",fs:Union[tuple,None]=(10,7), title:Union[str, None]=None, sig_cut:float=9.,label:str="fit"):
@@ -547,9 +549,10 @@ def plot_dist_fit(data:TreeHandler, var:str, par:list , no_bins:int=100 ,fitting
     ax.legend()
     ax.set_ylabel("counts")
     plt.subplots_adjust(left=0.06, bottom=0.06, right=0.99, top=0.96, hspace=0.55, wspace=0.55)
+    return ax
 
 # Function to Fit and plot a Gaussian distribution to data with recursive fitting.
-def fitplot_gauss_rec(data,var:str,no_bins=100,p0:Union[Sequence[float],None]=None, rec_len:int=2, sig:float=3., fs:Union[tuple,None]=(10,7),sig_cut:float=9.):
+def fitplot_gauss_rec(data:TreeHandler, var:str,no_bins=100,p0:Union[Sequence[float],None]=None, rec_len:int=2, sig:float=3., fs:Union[tuple,None]=(10,7),sig_cut:float=9.):
     """
     Fit and plot a Gaussian distribution to data with recursive fitting.
 
@@ -597,7 +600,7 @@ def var_draw_all(trees:Sequence[TreeHandler])->Sequence[str]:
     return [dat for dat in trees[0].get_var_names() if all(dat in entry.get_var_names() for entry in trees)]
 
 # Function to plot and save a 2d histogram using PYthon
-def plot_2dhist_numpy(data:TreeHandler, var1:str, var2:str,ax, bin:int=100, cmap:str="rainbow"):
+def plot_2dhist_numpy(data:TreeHandler, var1:str, var2:str, ax, hist_name:Union[str,None]=None, binsx:int=100,binsy:int=100,cmap:str="rainbow"):
     """
     Plot a 2 dimensional histogram using numpy.
 
@@ -613,16 +616,41 @@ def plot_2dhist_numpy(data:TreeHandler, var1:str, var2:str,ax, bin:int=100, cmap
     numpy_array=df.to_numpy()
     dataArr1 = np.array(pd.DataFrame(numpy_array, columns=df.columns)[var1]).astype(np.float64)
     dataArr2 = np.array(pd.DataFrame(numpy_array, columns=df.columns)[var2]).astype(np.float64)
-    hist, binsx,binsy=np.histogram2d(dataArr1,dataArr2, bins=bin)
+    hist, binsx,binsy=np.histogram2d(dataArr1,dataArr2, bins=[binsx,binsy], range=[(np.min(dataArr1),np.max(dataArr1)),(np.min(dataArr2),np.max(dataArr2))])
     hist=hist.T
+    if hist_name:
+        ax.set_title(hist_name)
+    cax=ax.pcolormesh(binsx, binsy, hist, cmap=cmap)
+    #ax.set_xlim(binsx.min(), binsx.max())
+    #ax.set_ylim(binsy.min(), binsy.max())
+    return cax
 
-    ax.pcolormesh(binsx, binsy, hist, cmap=cmap)
-    ax.set_xlim(binsx.min(), binsx.max())
-    ax.set_ylim(binsy.min(), binsy.max())
+def plot_hist_root( var_name:str, save_name_file:str, hist_name:str, title:str, data=Sequence[float], no_bins:int=100,logy:bool=True, save_name_pdf:Union[str,None]=None, save_file:bool=False):
+    hist = ROOT.TH1F(hist_name, hist_name, no_bins, 0, 0)
+    for value in data:
+        hist.Fill(value)
+    canvas = ROOT.TCanvas("canvas", title, 800, 600)
+    hist.Draw()
 
+    hist.SetXTitle(var_name)
+    if logy:
+        ROOT.gPad.SetLogy(1)
+    canvas.Draw()
+    # Save the canvas as an image file if needed
+    if save_name_pdf:
+        canvas.SaveAs(save_name_pdf)
+        canvas.Close()
+    # Create a new ROOT file to save the histogram
+    if save_file:
+        if os.path.exists(save_name_file):
+            output_file = ROOT.TFile(save_name_file, "UPDATE")
+        else:
+            output_file = ROOT.TFile(save_name_file, "RECREATE")
+        hist.Write()
+        output_file.Close()
 
 # Function to draw and save a 2d histogram using ROOT
-def plot_2dhist_root(file:str,  var1:str, var2:str, save_name_file:str, hist_name:str, title:str, save_name_pdf:Union[str,None]=None ,binsx:int=7,binsy:int=7,cmap=ROOT.kRainbow, minx:float=0, maxx:float=0, miny:float=0 , maxy:float=0,cuts:Union[str,None]=None, save_file:bool=False):
+def plot_2dhist_root(file:str,  var1:str, var2:str, save_name_file:str, hist_name:str, title:str, save_name_pdf:Union[str,None]=None ,binsx:int=7,binsy:int=7,cmap=ROOT.kRainbow, minx:float=0, maxx:float=0, miny:float=0 , maxy:float=0,cuts:Union[str,None]=None, save_file:bool=False, logz:bool=True):
     """
     Plot a 2 dimensional histogram using ROOT. Saves the histogram as pdf and as a .root file.
 
@@ -639,8 +667,11 @@ def plot_2dhist_root(file:str,  var1:str, var2:str, save_name_file:str, hist_nam
         cmap: Cmap, used in the plot. Default to ROOT.kRainbow
     """
     root_file = ROOT.TFile(file)
+    if cuts:
+        hist = ROOT.TH2F(hist_name, title+" Cut: " + cuts, binsx , minx, maxx, binsy, miny,maxy)
+    else:
+        hist = ROOT.TH2F(hist_name, title, binsx , minx, maxx, binsy, miny,maxy)
 
-    hist = ROOT.TH2F(hist_name, title, binsx , minx, maxx, binsy, miny,maxy)
     all_trees = find_trees(root_file)
     for tree_name in all_trees:
         hist_name = "temp_hist_{tree_name}"
@@ -673,7 +704,8 @@ def plot_2dhist_root(file:str,  var1:str, var2:str, save_name_file:str, hist_nam
     hist.Draw("COLZ")  # "COLZ" draws a 2D plot with a color palette
     hist.SetXTitle(var1)
     hist.SetYTitle(var2)
-    ROOT.gPad.SetLogz(1)
+    if logz:
+        ROOT.gPad.SetLogz(1)
     canvas.Draw()
     # Save the canvas as an image file if needed
     if save_name_pdf:
@@ -717,7 +749,8 @@ def add_projection(file_name:str, hist_name:str, save_name_pdf:Union[str,None]=N
 
 
 # Function to draw and save a 3d histogram using ROOT
-def plot_3dhist_root(file:str, tree_name:str,  var1:str, var2:str,var3:str, save_name_file:str, hist_name:str, save_name_pdf:str, title:str ,binsx:int=100, binsy:int=100, binsz:int=100,cmap=ROOT.kRainbow,folders:bool=False):
+def plot_3dhist_root(file:str,  var1:str, var2:str,var3:str, save_name_file:str, hist_name:str, save_name_pdf:Union[str,None]=None , title:str="hist_3d" ,binsx:int=100, binsy:int=100, binsz:int=100, cuts:Union[str,None]=None, cmap=ROOT.kRainbow,save_file:bool=False):
+   
     """
     Plot a 2 dimensional histogram using ROOT. Saves the histogram as pdf and as a .root file.
 
@@ -740,20 +773,19 @@ def plot_3dhist_root(file:str, tree_name:str,  var1:str, var2:str,var3:str, save
 
     #tree.Draw(f"{var3}:{var2}:{var1} >> {hist_name}")
 
-    if not folders:
-        hist = ROOT.TH3F(hist_name, title, binsx, 0,0, binsy, 0,0, binsz,0,0)
+    hist = ROOT.TH3F(hist_name, title, binsx, 0,0, binsy, 0,0, binsz,0,0)
+    all_trees = find_trees(root_file)
+    for tree_name in all_trees:
+        hist_name = "temp_hist_{tree_name}"
+        hist_help = ROOT.TH3F(hist_name, "",binsx, 0,0, binsy, 0,0, binsz,0,0)
+        #print(tree_name)
         tree = root_file.Get(tree_name)
-        tree.Draw(f"{var3}:{var2}:{var1} >> {hist_name}")
-    else: 
-        hist = ROOT.TH3F(hist_name, title, binsx, 0,0, binsy, 0,0, binsz,0,0)
-        all_trees = find_trees(root_file)
-        for tree_name in all_trees:
-            hist_name = "temp_hist_{tree_name}"
-            hist_help = ROOT.TH3F(hist_name, "",binsx, 0,0, binsy, 0,0, binsz,0,0)
-            #print(tree_name)
-            tree = root_file.Get(tree_name)
+        if cuts:
+            tree_cutted = tree.CopyTree(cuts)
+            tree_cutted.Draw(f"{var3}:{var2}:{var1} >> {hist_name}")
+        else:
             tree.Draw(f"{var3}:{var2}:{var1} >> {hist_name}")
-            hist.Add(hist_help)     
+        hist.Add(hist_help)     
 
     print(f"ok, tree draws {var1}, {var2},{var3}")
     canvas = ROOT.TCanvas("canvas", "", 1000, 600)
@@ -775,18 +807,19 @@ def plot_3dhist_root(file:str, tree_name:str,  var1:str, var2:str,var3:str, save
     hist.SetXTitle(var1)
     hist.SetYTitle(var2)
     hist.SetZTitle(var3)
-    ROOT.gPad.SetLogz(1)
+    #ROOT.gPad.SetLogz(1)
 
     # Save the canvas as an image file if needed
     canvas.SaveAs(save_name_pdf)
     canvas.Close()
     # Create a new ROOT file to save the histogram
-    if os.path.exists(save_name_file):
-        output_file = ROOT.TFile(save_name_file, "UPDATE")
-    else:
-        output_file = ROOT.TFile(save_name_file, "RECREATE")
-    hist.Write()
-    output_file.Close()
+    if save_file:
+        if os.path.exists(save_name_file):
+            output_file = ROOT.TFile(save_name_file, "UPDATE")
+        else:
+            output_file = ROOT.TFile(save_name_file, "RECREATE")
+        hist.Write()
+        output_file.Close()
 
 
 # Function to plot several histograms in one pdf
@@ -828,25 +861,6 @@ def plot_histograms_grid(root_file:str,save_name_pdf:str):
     canvas.Update()
     canvas.SaveAs(save_name_pdf)
 
-# Function to merge several PDFs in one PDF file
-def merge_pdfs(pdf_list:Sequence[str], output_path:str):
-    """
-    Parameters:
-        pdf_list (Sequence[str]): List that contains all PDFs that should be merged
-        output_path (str): Name of the merged PDF that will be saved
-    """
-    merger = PyPDF2.PdfMerger()
-
-    for pdf in pdf_list:
-        merger.append(pdf)
-
-    merger.write(output_path)
-    merger.close()
-
-    # Remove individual PDF files
-    for pdf in pdf_list:
-        os.remove(pdf)
-
 
 def find_trees(directory, path=""):
     trees = []
@@ -860,7 +874,7 @@ def find_trees(directory, path=""):
     return trees
 
 
-def fit_chrystalball(save_name_file:str,hist_given:Union[ROOT.TH1F, None]=None,file_name:Union[str,None]=None,tree_name:Union[str,None]=None,save_name_pdf:Union[str,None]=None, var:str="fMass",save_file:bool=True,x_min_fit:float=1.086,x_max_fit:float=1.14,x_min_data:float=1.05,x_max_data:float=1.16,no_bins:int=100,title:str="crystalball+background fit",cheb:bool=False, logy:bool=True,n_sig:float=4, fixed_cbParams:bool=False):
+def fit_chrystalball(save_name_file:str, hist_given:Union[ROOT.TH1F, None]=None,file_name:Union[str,None]=None, save_name_pdf:Union[str,None]=None, var:str="fMass", save_file:bool=True,x_min_fit:float=1.086,x_max_fit:float=1.14,x_min_data:float=1.05,x_max_data:float=1.16,no_bins:int=100,title:str="crystalball+background fit",cheb:bool=False, logy:bool=True,n_sig:float=4, fixed_cbParams:bool=False):
 
 
     # Create a ROOT application
@@ -1071,8 +1085,8 @@ def fit_chrystalball(save_name_file:str,hist_given:Union[ROOT.TH1F, None]=None,f
     legend.Draw()
     notes.Draw()
 
-    if save_name_pdf:
-        canvas.SaveAs(save_name_pdf)
+
+    canvas.SaveAs(save_name_pdf)
     
     if save_file:
         if os.path.exists(save_name_file):
@@ -1283,3 +1297,4 @@ def get_minmax_of_tree(file_name:str, branch1:str):
             max_val = tree.GetMaximum(branch1)
     print("min: ", min_val)
     print("max: ", max_val)
+
