@@ -4,6 +4,8 @@ import preparing_data as prep
 from hipe4ml import plot_utils
 import itertools
 from hipe4ml.tree_handler import TreeHandler
+from hipe4ml.model_handler import ModelHandler
+import rooFitting as rfit
 from typing import Union, Sequence, Tuple
 import seaborn as sns 
 import os
@@ -60,7 +62,7 @@ import matplotlib.image as mpimg
 
 
 # function to get the usual needed data sets
-def get_sets(directory_sets:str, file_directory_data:str, tree_data:str, file_directory_mc:str, tree_mc:str, already_saved:bool=True, onlynewMC:bool=False, fname:str="DF*"):
+def get_sets(directory_sets:str, file_directory_data:str, tree_data:str, file_directory_mc:str, tree_mc:str, already_saved:bool=True, onlynewMC:bool=False, onlynewDataBckg:bool=False, fname:str="DF*"):
     """
     Get the usual needed data sets
 
@@ -76,6 +78,11 @@ def get_sets(directory_sets:str, file_directory_data:str, tree_data:str, file_di
         names=prep.get_variable_names(mcsets,locals())
         save_sets(mcsets,set_names=names,dir_tree=directory_sets)
         print("MC Subsets saved!")
+    
+    elif already_saved==True and onlynewDataBckg == True:
+        cu=prep.fit_gauss_rec(prep.get_rawdata(file_directory_data, tree_data, folder_name=fname), var="fMass",p0=[300000,1.115,0.005,1000],sig_cut=13)[2]
+        bckg_data=prep.add_Radius(prep.proton_pion_division(prep.get_bckg(file_directory_data, tree_data, cu, folder_name=fname)))
+        save_sets(sets=[bckg_data],set_names=["bckg_data"],dir_tree=directory_sets)
 
     elif already_saved==False:
         print("sets not saved yet")
@@ -248,23 +255,31 @@ def plot_2dhist_numpy(sets:Sequence[TreeHandler], set_names:Sequence[str],varsx:
     else:
         plt.show()
 
-def plot_hist_root(save_directory:str, varsx:Sequence[str],data:Sequence[list],data_name:Sequence[str], pdf_name:str="some_hist.pdf",binsx:int=100, save_pdf:bool=False, file_name:str="some_hist.root", save_file:bool=False,title:str="title",logy:bool=True):
+def plot_hist_root(save_directory:str, varsx:Sequence[str], data_names:Sequence[str],data:Union[Sequence[list],None]=None, files:Union[Sequence[str],None]=None, pdf_name:str="some_hist.pdf",binsx:int=100, save_pdf:bool=False, save_name_file:Union[str,None]=None,title:str="title",logy:bool=True,from_file:bool=True):
 
     dir_result=save_directory
     l1=varsx
-
     pdflist=[]
-    root_file_hist=file_name
-    
-    for dat, tu in zip(data,l1):
-        hname=f"{data_name}_{tu}"
-        if not save_pdf:
-            prep.plot_hist_root(var_name=tu, save_name_file=root_file_hist, hist_name=hname, save_name_pdf=dir_result+f"{hname}.png",title=title,data=dat, no_bins=binsx,save_file=save_file,logy=logy)
-            pdflist.append(dir_result+f"{hname}.png")
-            display_root_canvas(image_path=dir_result+f"{hname}.png")
-        else:
-            prep.plot_hist_root(var_name=tu, save_name_file=root_file_hist, hist_name=hname, save_name_pdf=dir_result+f"{hname}.png",title=title,data=dat, no_bins=binsx,save_file=save_file,logy=logy)
-            pdflist.append(dir_result+f"{hname}.pdf")
+    if not from_file:
+        for dat, tu, nm in zip(data,l1,data_names):
+            hname=f"{nm}_{tu}"
+            if not save_pdf:
+                prep.plot_hist_root(var_name=tu, save_name_file=save_name_file, hist_name=hname, save_name_pdf=dir_result+f"{hname}.png",title=title, data=dat, no_bins=binsx,logy=logy,from_file=False)
+                pdflist.append(dir_result+f"{hname}.png")
+                display_root_canvas(image_path=dir_result+f"{hname}.png")
+            else:
+                prep.plot_hist_root(var_name=tu, save_name_file=save_name_file, hist_name=hname, save_name_pdf=dir_result+f"{hname}.png",title=title,data=dat, no_bins=binsx,logy=logy,from_file=False)
+                pdflist.append(dir_result+f"{hname}.pdf")
+    else:
+        for file_data, tu ,nm in zip(files,l1,data_names):
+            hname=f"{nm}_{tu}"
+            if not save_pdf:
+                prep.plot_hist_root(var_name=tu, save_name_file=save_name_file, hist_name=hname, save_name_pdf=dir_result+f"{hname}.png",title=title,file_name=file_data, no_bins=binsx,logy=logy,from_file=True)
+                pdflist.append(dir_result+f"{hname}.png")
+                display_root_canvas(image_path=dir_result+f"{hname}.png")
+            else:
+                prep.plot_hist_root(var_name=tu, save_name_file=save_name_file, hist_name=hname, save_name_pdf=dir_result+f"{hname}.png",title=title,file_name=file_data, no_bins=binsx,logy=logy,from_file=True)
+                pdflist.append(dir_result+f"{hname}.pdf")
     if save_pdf:
         merge_pdfs(pdf_list=pdflist, output_path=dir_result+pdf_name)
     else: 
@@ -357,6 +372,24 @@ def scans(vals:Sequence[float],data:TreeHandler,var:str,vars_to_plot:Sequence[st
                 pdfs.append(f"cut_val{val}.pdf")
             merge_pdfs(pdfs, output_path=filename)
 
+def plot_scans_bdt(prompt:TreeHandler, nonprompt:TreeHandler, range:Sequence[float], no_points:int,var:str="trainBckgMC_class2"):
+    values=np.arange(range[0],range[1], (range[1]-range[0])/no_points)
+    myDict= prep.scans_bdt(vals=values[1:],prompt=prompt,nonprompt=nonprompt,base=range[0],uppercuts=True,var=var)
+    fig, ax =plt.subplots()
+    ax.scatter(values[1:], list(myDict.values()), marker="x")
+    ax.set_xlabel("BDT score class 2 (prompt)")
+    ax.set_ylabel("$\\frac{n(Nonprompt)<BDT}{n(Prompt)<BDT}$")
+    ax.plot(range,len(range)*[1], color="black", linestyle="--")
+
+    max_key = max(myDict, key=myDict.get)
+    ax.plot([max_key,max_key],[0,max(list(myDict.values()))*1.1],color="red")
+    arrowprops=dict(facecolor='black', shrink=0.05)
+    ax.annotate(text=f"max at {max_key:.2f}",xytext=(0.3, 0.5),xy=(max_key,max(list(myDict.values()))*0.5),arrowprops=arrowprops)
+    fig.suptitle("BDT-Scan:(Non-)prompt ratio")
+
+    return max_key, max(list(myDict.values()))
+
+
 def plot_comb_daughterPDG(var:Sequence[str], data:TreeHandler,save_dir_plots:str, pdf_filename:str="Dist_daughters.pdf"):
     pdfs=[]
     l1=list(set(prep.TreetoArray(data,var="fPDGCodeDauPos")))
@@ -376,7 +409,6 @@ def get_allPDG(variable:str, data:TreeHandler):
 
 def plot_chrystalball_fit(file_directory_data:str, x_min_fit:float=1.086,x_max_fit:float=1.14,x_min_data:float=1.05,x_max_data:float=1.16, savepdf:bool=False, var:str="fMass",save_name_root:str=f"data.root",nobins:int=200,cheb:bool=False,save_file:bool=False,logy:bool=True, fs:Tuple[float]=(8,5)):
 
-
     if cheb:
         pdfname=f"/home/katrin/Cern_summerProject/crystalball_fits/crystalball_bckg_cheb.png"
     else:
@@ -388,6 +420,12 @@ def plot_chrystalball_fit(file_directory_data:str, x_min_fit:float=1.086,x_max_f
     if not savepdf:
         os.remove(pdfname)
 
+def plot_histogram_fit(file_data:str, hist_data:str, file_model:str, hists_model:Sequence[str],title:str="title", png_name:str="hist_fit.png", savepng:bool=False, save_file:Union[str,None]=None,logy:bool=True, fs:Tuple[float]=(8,5)):
+
+    prep.fit_histogram(file_data=file_data, hist_data=hist_data, file_model=file_model, hists_model=hists_model, title=title,save_name_file=save_file,save_name_pdf=png_name,logy=logy)
+    display_root_canvas(image_path=png_name, fs=fs)
+    if not savepng:
+        os.remove(png_name)
 
 
 def crystalball_fit_seperatedbins(file_directory_data:str,branch1:str="fMass", branch2:str="fPt", n_branch1:int=250, min_val_branch1:float=1.08, max_val_branch1:float=1.8, min_val_branch2:float=0.3,  max_val_branch2:float=4, binwidth_branch2:float=0.1, save_file:bool=False, hist2d_saved:bool=True, cheb:bool=False, logy:bool=True, save_pdf:bool=True, with_cut:bool=False):
@@ -486,9 +524,15 @@ def display_root_canvas(image_path, fs:Tuple[float]=(8,5)):
 def apply_cuts(data:TreeHandler, var:str, lower_cut:Union[float,None]=None,upper_cut:Union[float,None]=None, inclusive:bool=True)->TreeHandler:
     return prep.cut_data(data=data, var=var,lower_cut=lower_cut,upper_cut=upper_cut,inclusive=inclusive)
 
-def get_TreeHandler(file_name:str, tree_name:str, folder_name:str):
-    data=TreeHandler(file_name, tree_name, folder_name=folder_name)
-    return data
+def get_TreeHandler(file_name:str, tree_name:str, folder_name:str, is_largeFile:bool=False):
+    
+    if is_largeFile:
+        data=TreeHandler()
+        data.get_handler_from_large_file(file_name=file_name, tree_name=tree_name)
+        return data
+    else:
+        data=TreeHandler(file_name, tree_name, folder_name=folder_name)
+        return data
 
 # Function to save the desired subsets
 def save_sets(sets:Sequence[TreeHandler], set_names:Sequence[str], dir_tree:str, tree:str="tree"):
@@ -506,6 +550,43 @@ def save_sets(sets:Sequence[TreeHandler], set_names:Sequence[str], dir_tree:str,
         set_names=set_names
     for (i,name) in zip(sets,set_names):
         prep.get_root_from_TreeHandler(treehdl=i, save_dir=dir_tree, output_name=f"{name}.root",treename=tree)
+
+def prepare_hists_simFit(file_data:str, tree_data:str, model:ModelHandler, no_bins:int=50, fname:str="DF*", save_name_file:str="hists_simFit.root"):
+    
+    #minmass, maxmass=prep.get_minmax_of_tree(file_name=file_data, branch1="fMass")
+    histmass = ROOT.TH1F("histmass", "Mass Data", no_bins, 1.086, 1.14)  # Adjust binning and range as necessary
+    histbdt = ROOT.TH1F("histbdt", "Bdt Data", no_bins, 0 ,1)  # Adjust binning and range as necessary
+
+    data=prep.cut_data(data=prep.get_rawdata(file_directory_data=file_data, tree_data=tree_data,folder_name=fname),var="fMass", lower_cut=1.086, upper_cut=1.14)
+    df=data.get_data_frame()
+    mass_array=df["fMass"]
+    for mass in mass_array:
+        histmass.Fill(mass)
+    
+    pred=model.predict(data, output_margin=False)
+    pred_class2=[]
+
+    for i in range(len(pred)):
+        ls=pred[i]
+        pred_class2.append(ls[2])
+    
+    for bdt in pred_class2:
+        histbdt.Fill(bdt)
+
+    output_file = ROOT.TFile(save_name_file, "RECREATE")
+    histmass.Write()
+    histbdt.Write()
+    output_file.Close()
+
+    
+
+def plot_simFit(file_hist_data:str, hist_bdt:str, hist_mass:str, file_model:str, hists_model:Sequence[str],  png_name:str="simFit.png",fs:Tuple[float]=(10,6),no_bins:int=50,fname:str="DF*"):
+    
+
+    rfit.fit_simultanously(file_hist_data=file_hist_data, hist_bdt=hist_bdt,hist_mass=hist_mass, file_model=file_model, hists_model=hists_model,save_name_file="simFit.root")
+    display_root_canvas(image_path="/home/katrin/Cern_summerProject/"+png_name, fs=fs)
+
+
 
 #def analysis_cutted_subsets(already_saved:bool=True, onlynewMC:bool=False):
 #
@@ -598,4 +679,6 @@ def save_sets(sets:Sequence[TreeHandler], set_names:Sequence[str], dir_tree:str,
 #crystalball_fit_seperatedbins(hist2d_saved=True,cheb=True,with_cut=True)
 #plot_2dhist_root(file_names=[file_directory_data])
 #plot_chrystalball_fit(file_directory_data="/home/katrin/Cern_summerProject/data/AO2D_data_woK0.root")
-#crystalball_fit_seperatedbins(file_directory_data="/home/katrin/Cern_summerProject/data/AO2D_data_woK0.root", hist2d_saved=False, save_pdf=False, cheb=True, with_cut=True)
+
+
+#crystalball_fit_seperatedbins(file_directory_data="/home/katrin/Cern_summerProject/data/AO2D_data_woK0.root", hist2d_saved=False, save_pdf=False, cheb=False, with_cut=False)

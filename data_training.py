@@ -142,8 +142,20 @@ def get_model(file_name:str):
     model.load_model_handler(filename=file_name)
     return model
 
-def model_prediction_data(model:ModelHandler, directory_data:str, tree_data:str="O2lambdatableml", fname:str="DF*", marg:bool=True):
+def model_prediction_data(model:ModelHandler, directory_data:str, tree_data:str="O2lambdatableml", fname:str="DF*", marg:bool=True, applyModelHandler:bool=False,name_training:str="train",cut:bool=False):
     data=prep.get_rawdata(file_directory_data=directory_data, tree_data=tree_data,folder_name=fname)
-    predictions=model.predict(data, output_margin=marg)
-
-    return predictions
+    if not applyModelHandler:
+        predictions=model.predict(data, output_margin=marg)
+        return predictions
+    
+    else:
+        if cut:
+            var=str(input("Variable to apply cut:"))
+            lowerlimit=float(input("lower limit:"))
+            upperlimit=float(input("upper limit: "))
+            prep.cut_data(data=data,var=var, lower_cut=lowerlimit,upper_cut=upperlimit)
+            data.apply_model_handler(model_handler=model,output_margin=marg, column_name=[name_training+"_class0",name_training+"_class1",name_training+"_class2"])
+        else: 
+            data.apply_model_handler(model_handler=model,output_margin=marg, column_name=[name_training+"_class0",name_training+"_class1",name_training+"_class2"])
+        return data
+        
